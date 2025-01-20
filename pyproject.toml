@@ -14,8 +14,9 @@ generate-setup-file = false
 python = "3.12"
 scipy = "^1.15.1"
 cython = "^3.0.11"
-datasketch = "^1.6.5"
 setuptools = "^75.8.0"
+mmh3 = "^5.0.1"
+nltk = "^3.9.1"
 
 
 [tool.poetry.group.dev.dependencies]
