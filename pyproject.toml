@@ -22,6 +22,7 @@ setuptools = "^75.8.0"
 black = "^24.10.0"
 pytest = "^8.3.4"
 isort = "^5.13.2"
+requests = "^2.32.3"
 
 [build-system]
 requires = ["poetry-core",  "setuptools", "wheel", "Cython", "numpy"]
