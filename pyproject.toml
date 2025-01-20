@@ -11,7 +11,7 @@ script = "setup.py"
 generate-setup-file = false
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "3.12"
 scipy = "^1.15.1"
 cython = "^3.0.11"
 datasketch = "^1.6.5"
@@ -23,6 +23,7 @@ black = "^24.10.0"
 pytest = "^8.3.4"
 isort = "^5.13.2"
 requests = "^2.32.3"
+spacy = "^3.8.4"
 
 [build-system]
 requires = ["poetry-core",  "setuptools", "wheel", "Cython", "numpy"]

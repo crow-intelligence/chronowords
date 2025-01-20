@@ -173,3 +173,22 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 /data/speeches.json
+
+# Cython
+*.c
+*.cpp
+*.html
+.nox/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*.cover
+*.py,cover
+.pytest_cache/
+
+# Project specific
+*.npy
+*.p
+*.pkl
+*.iml

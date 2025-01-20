@@ -93,6 +93,11 @@ poetry build
 - datasketch (for probabilistic counting)
 - cython (for performance optimizations)
 
+### Data
+```
+Miller Center of Public Affairs, University of Virginia. "Presidential Speeches: Downloadable Data." Accessed March 17, 2022. data.millercenter.org.
+```
+
 ## Usage in Your Work
 
 If you use this library in your work, please reference this repository:

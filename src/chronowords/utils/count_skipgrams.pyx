@@ -27,16 +27,6 @@ def compute_ppmi_matrix(
 ) -> csr_matrix:
     """
     Compute PPMI matrix from skipgram counts using efficient C++ data structures.
-
-    Args:
-        skipgram_counts: Dictionary of skipgram counts from Count-Min Sketch
-        word_counts: Dictionary of word counts from Count-Min Sketch
-        vocabulary: List of words in the vocabulary
-        shift: PMI shifting factor (default: 1.0)
-        alpha: Context distribution smoothing (default: 0.75)
-
-    Returns:
-        Sparse PPMI matrix
     """
     cdef:
         double skip_total = sum(skipgram_counts.values())
@@ -64,7 +54,8 @@ def compute_ppmi_matrix(
         w1_enc = w1.encode()
         w2_enc = w2.encode()
 
-        if w1_enc in word_probs and w2_enc in word_probs:
+        # Use count() method instead of 'in' operator
+        if word_probs.count(w1_enc) > 0 and word_probs.count(w2_enc) > 0:
             pa = word_probs[w1_enc]
             pb = pow(word_probs[w2_enc], alpha)
             pab = count / skip_total
@@ -72,15 +63,18 @@ def compute_ppmi_matrix(
             pmi = log(pab / (pa * pb)) - log(shift)
 
             if pmi > 0:
-                idx = word_to_idx[w1_enc]
-                data.push_back(pmi)
-                row_indices.push_back(word_to_idx[w1_enc])
-                col_indices.push_back(word_to_idx[w2_enc])
+                # Make sure both words are in the index map
+                if (word_to_idx.count(w1_enc) > 0 and
+                        word_to_idx.count(w2_enc) > 0):
+                    idx = word_to_idx[w1_enc]
+                    data.push_back(pmi)
+                    row_indices.push_back(word_to_idx[w1_enc])
+                    col_indices.push_back(word_to_idx[w2_enc])
 
-                # Add symmetric counterpart
-                data.push_back(pmi)
-                row_indices.push_back(word_to_idx[w2_enc])
-                col_indices.push_back(word_to_idx[w1_enc])
+                    # Add symmetric counterpart
+                    data.push_back(pmi)
+                    row_indices.push_back(word_to_idx[w2_enc])
+                    col_indices.push_back(word_to_idx[w1_enc])
 
     # Create sparse matrix
     return csr_matrix(
@@ -93,6 +87,3 @@ def compute_ppmi_matrix(
         ),
         shape=(n, n)
     )
-
-# write a short descirption of the project
-# PPMI matrix based language models and diachronic word embeddings
