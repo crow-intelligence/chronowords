@@ -1,39 +1,53 @@
 import sys
 
-import numpy as np
 from Cython.Build import cythonize
 from setuptools import Extension, find_namespace_packages, setup
-from setuptools.command.build_ext import build_ext
 
-# Define the extension modules
+try:
+    import numpy as np
+except ImportError:
+    # If numpy is not available during the build, we need to install it first
+    from setuptools import dist
+
+    dist.Distribution().fetch_build_eggs(["numpy"])
+    import numpy as np
+
+# Define Cython extension
 extensions = [
     Extension(
         "chronowords.utils.count_skipgrams",
-        sources=["src/chronowords/utils/count_skipgrams.pyx"],
+        ["src/chronowords/utils/count_skipgrams.pyx"],
         include_dirs=[np.get_include()],
         language="c++",
-        extra_compile_args=["-std=c++11"],
+        extra_compile_args=["-std=c++11"],  # Ensure C++11 support
     )
 ]
 
-if __name__ == "__main__":
-    # Add build command if not present
-    if len(sys.argv) == 1:
-        sys.argv.append("build_ext")
+# Always run setup with build_ext
+if len(sys.argv) == 1:
+    sys.argv.append("build_ext")
+    sys.argv.append("--inplace")
 
-    setup(
-        name="chronowords",
-        packages=find_namespace_packages(where="src"),
-        package_dir={"": "src"},
-        ext_modules=cythonize(
-            extensions,
-            compiler_directives={
-                "language_level": 3,
-                "boundscheck": False,
-                "wraparound": False,
-                "nonecheck": False,
-                "cdivision": True,
-            },
-        ),
-        zip_safe=False,
-    )
+setup(
+    name="chronowords",
+    packages=find_namespace_packages(where="src"),
+    package_dir={"": "src"},
+    ext_modules=cythonize(
+        extensions,
+        compiler_directives={
+            "language_level": "3",
+            "boundscheck": False,
+            "wraparound": False,
+            "nonecheck": False,
+            "cdivision": True,
+        },
+    ),
+    install_requires=[
+        "numpy>=1.20.0",
+        "scipy>=1.7.0",
+        "nltk>=3.6.0",
+        "mmh3>=3.0.0",  # For MurmurHash3
+    ],
+    python_requires=">=3.8",
+    zip_safe=False,  # Required for Cython
+)
