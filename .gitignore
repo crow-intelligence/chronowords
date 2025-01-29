@@ -192,3 +192,6 @@ coverage.xml
 *.p
 *.pkl
 *.iml
+
+models/
+.ropeproject/

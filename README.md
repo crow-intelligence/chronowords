@@ -9,7 +9,9 @@ A Python library for analyzing how word meanings change over time using word emb
 - Fast computation using Cython optimizations
 - Support for word similarity and analogy operations
 - Memory-bounded processing suitable for very large datasets
-
+- Topic modeling with temporal alignment
+- Topic evolution tracking
+- 
 ## Installation
 
 ```bash
@@ -72,6 +74,31 @@ These settings use approximately:
 - Memory: cms_width * cms_depth * 4 bytes
 - Error bound: ≈ 2/cms_width with probability 1 - 1/2^cms_depth
 
+## Topic Modeling
+
+The library also supports topic modeling with temporal alignment:
+
+```python
+from chronowords.topics.nmf import TopicModel
+
+# Create and train topic model
+model = TopicModel(n_topics=10)
+model.fit(ppmi_matrix, vocabulary)
+
+# Print discovered topics
+model.print_topics()
+
+# Get document topics
+doc_topics = model.get_document_topics(doc_vector)
+
+# Temporal topic alignment
+model2 = TopicModel(n_topics=10)
+model2.fit(ppmi_matrix2, vocabulary2)
+
+# Align topics between time periods
+aligned_topics = model1.align_with(model2)
+```
+
 ## Development
 
 ```bash
@@ -90,8 +117,9 @@ poetry build
 - Python 3.8+
 - numpy
 - scipy
-- datasketch (for probabilistic counting)
+- mmh3 (for probabilistic counting)
 - cython (for performance optimizations)
+- scikit-learn (for topic modeling)
 
 ### Data
 ```
