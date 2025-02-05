@@ -14,7 +14,13 @@ from sklearn.decomposition import NMF
 
 @dataclass
 class Topic:
-    """Container for topic information."""
+    """Container for topic information.
+
+    Fields:
+        id: Unique topic identifier
+        words: List of (word, weight) pairs for top words
+        distribution: Full probability distribution over vocabulary
+    """
 
     id: int
     words: List[Tuple[str, float]]  # (word, weight) pairs
@@ -23,7 +29,13 @@ class Topic:
 
 @dataclass
 class AlignedTopic:
-    """Container for aligned topic pairs."""
+    """Container for aligned topic pairs.
+
+    Fields:
+        source_topic: Topic from source time period
+        target_topic: Topic from target time period
+        similarity: Cosine similarity between topics
+    """
 
     source_topic: Topic
     target_topic: Topic
@@ -67,8 +79,14 @@ class TopicModel:
     def fit(
         self, ppmi_matrix: csr_matrix, vocabulary: List[str], top_n_words: int = 10
     ) -> None:
-        """
-        Fit topic model to PPMI matrix.
+        """Fit topic model to PPMI matrix.
+
+        Args:
+            ppmi_matrix: Sparse PPMI matrix from word embeddings
+            vocabulary: List of words corresponding to matrix columns
+            top_n_words: Number of top words to store per topic
+
+        The method performs NMF factorization and normalizes topic distributions.
         """
         self.vocabulary = vocabulary
 
@@ -139,14 +157,16 @@ class TopicModel:
         return 1 - cosine(topic1.distribution, topic2.distribution)
 
     def align_with(self, other: "TopicModel") -> List[AlignedTopic]:
-        """
-        Align topics with another model using Hungarian algorithm.
+        """Align topics with another model using Hungarian algorithm.
+
+        Finds optimal matching between topic sets by maximizing total similarity.
+        Only returns pairs above min_similarity threshold.
 
         Args:
             other: Another fitted TopicModel
 
         Returns:
-            List of aligned topic pairs
+            List of aligned topic pairs sorted by similarity
         """
         if not self.topics or not other.topics:
             raise ValueError("Both models must be fit before alignment")

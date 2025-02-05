@@ -13,7 +13,13 @@ from scipy.linalg import orthogonal_procrustes
 
 @dataclass
 class AlignmentMetrics:
-    """Container for alignment quality metrics."""
+    """Container for alignment quality metrics.
+
+    Fields:
+        average_cosine_similarity: Mean cosine similarity between aligned word pairs
+        num_aligned_words: Number of words successfully aligned
+        alignment_error: Frobenius norm of the difference between aligned matrices
+    """
 
     average_cosine_similarity: float
     num_aligned_words: int
@@ -21,7 +27,18 @@ class AlignmentMetrics:
 
 
 class ProcustesAligner:
-    """Aligns word embeddings from different time periods using Procrustes analysis."""
+    """Aligns word embeddings from different time periods using Procrustes analysis.
+
+    Finds optimal orthogonal transformation to align embeddings while preserving distances.
+
+    Example:
+        aligner = ProcustesAligner()
+        metrics = aligner.fit(
+            embeddings_1800, embeddings_1850,
+            vocab_1800, vocab_1850
+        )
+        aligned_embeddings = aligner.transform(embeddings_1800)
+    """
 
     def __init__(
         self, min_freq_rank: Optional[int] = None, max_freq_rank: Optional[int] = 1000
@@ -45,7 +62,14 @@ class ProcustesAligner:
     def find_common_words(
         self, source_vocab: List[str], target_vocab: List[str]
     ) -> List[str]:
-        """Find common words between source and target vocabularies."""
+        """Find common words between source and target vocabularies.
+
+        Uses frequency rank filtering (min_freq_rank to max_freq_rank) to select
+        stable anchor words for alignment.
+
+        Returns:
+            List of common words sorted alphabetically
+        """
         # Convert to sets and find intersection
         source_set = set(source_vocab[self.min_freq_rank : self.max_freq_rank])
         target_set = set(target_vocab[self.min_freq_rank : self.max_freq_rank])
@@ -61,6 +85,20 @@ class ProcustesAligner:
     ) -> AlignmentMetrics:
         """
         Learn the orthogonal transformation matrix using Procrustes analysis.
+
+        Args:
+            source_embeddings: Source space word embeddings
+            target_embeddings: Target space word embeddings
+            source_vocab: Vocabulary list for source embeddings
+            target_vocab: Vocabulary list for target embeddings
+            anchor_words: Optional list of specific words to use for alignment
+                         If None, uses common words filtered by frequency rank
+
+        Returns:
+            AlignmentMetrics containing quality measures of the alignment
+
+        Raises:
+            ValueError: If no common words found or all vectors are zero
         """
         self.source_words = source_vocab
         self.target_words = target_vocab
@@ -149,9 +187,8 @@ class ProcustesAligner:
 
     def get_word_similarity(
         self, word: str, source_emb: np.ndarray, target_emb: np.ndarray
-    ) -> Optional[float]:
-        """
-        Get similarity between word representations in source and target spaces.
+    ):
+        """Get similarity between word representations in source and target spaces.
 
         Args:
             word: Word to compare
@@ -159,7 +196,9 @@ class ProcustesAligner:
             target_emb: Target embeddings
 
         Returns:
-            Cosine similarity between aligned vectors, or None if word not found
+            Cosine similarity [-1,1] between aligned vectors,
+            higher values indicate more similar usage between periods.
+            Returns None if word not found in either vocabulary.
         """
         try:
             source_idx = self.source_words.index(word)

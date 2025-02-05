@@ -44,7 +44,7 @@ def test_basic_alignment(simple_embeddings):
     # Check metrics
     assert metrics.num_aligned_words == 4
     assert metrics.average_cosine_similarity > 0.99  # Should be very close to 1
-    assert metrics.alignment_error < 4.0001 #0.01  # Should be very small
+    assert metrics.alignment_error < 4.0001  # 0.01  # Should be very small
 
     # Transform source embeddings
     aligned_emb = aligner.transform(source_emb)

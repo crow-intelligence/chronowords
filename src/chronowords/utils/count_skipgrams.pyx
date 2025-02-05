@@ -23,7 +23,27 @@ DTYPE = np.int32
 ctypedef np.int32_t DTYPE_t
 
 cdef class PPMIComputer:
-    """Encapsulates PPMI computation state and methods."""
+    cdef class PPMIComputer:
+    """
+    Encapsulates PPMI computation state and methods.
+
+    Uses batch processing and Count-Min Sketch data structures for
+    memory-efficient PPMI matrix computation.
+    """
+
+    cdef int _get_min_count(self, bytes word_bytes) except -1:
+        """
+        Get minimum count from Count-Min Sketch arrays.
+        
+        Args:
+            word_bytes: Encoded word to look up
+            
+        Returns:
+            Minimum count across hash functions
+            
+        Raises:
+            -1 on error
+        """
 
     cdef:
         object skipgram_counts  # np.ndarray but kept as object for gil
@@ -152,6 +172,21 @@ def compute_ppmi_matrix_with_sketch(
 ) -> csr_matrix:
     """
     Compute PPMI matrix using Count-Min Sketch data with batched processing.
+
+    Args:
+        skipgram_counts: Count-Min Sketch array for skipgrams
+        word_counts: Count-Min Sketch array for words
+        vocabulary: List of words
+        seeds: Hash function seeds
+        width: Width of Count-Min Sketch tables
+        skip_total: Total skipgram count
+        word_total: Total word count
+        shift: PMI shift parameter (default: 1.0)
+        alpha: Context distribution smoothing (default: 0.75)
+        batch_size: Number of words per batch (default: 1024)
+
+    Returns:
+        Sparse PPMI matrix
     """
     cdef:
         int n = len(vocabulary)

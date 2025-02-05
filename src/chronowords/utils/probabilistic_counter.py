@@ -6,10 +6,23 @@ import numpy as np
 
 
 class CountMinSketch:
-    """Count-Min Sketch implementation for memory-efficient counting."""
+    """
+    Count-Min Sketch implementation for memory-efficient counting.
+
+    Uses multiple hash functions to approximate frequencies with bounded error.
+    Memory usage: width * depth * 4 bytes
+    Error bound: ≈ 2/width with probability 1 - 1/2^depth
+    """
 
     def __init__(self, width: int = 1_000_000, depth: int = 5, seed: int = 42):
-        """Initialize Count-Min Sketch."""
+        """
+        Initialize Count-Min Sketch.
+
+        Args:
+            width: Number of counters per hash function (controls accuracy)
+            depth: Number of hash functions (controls probability bound)
+            seed: Random seed for hash function initialization
+        """
         self.width = width
         self.depth = depth
         self.seed = seed
@@ -26,7 +39,13 @@ class CountMinSketch:
         self._observed_keys = set()
 
     def update(self, key: Union[str, bytes], count: int = 1) -> None:
-        """Update count for a key."""
+        """
+        Update count for a key.
+
+        Args:
+            key: Item to count (string or bytes)
+            count: Amount to increment (default: 1)
+        """
         if isinstance(key, str):
             key = key.encode()
             # Store original string key
@@ -55,7 +74,15 @@ class CountMinSketch:
         return int(min_count)
 
     def get_heavy_hitters(self, threshold: float) -> List[Tuple[str, int]]:
-        """Get items that appear more than threshold * total times."""
+        """
+        Get items that appear more than threshold * total times.
+
+        Args:
+            threshold: Minimum frequency as fraction of total counts
+
+        Returns:
+            List of (item, count) pairs sorted by count descending
+        """
         threshold_count = int(self.total * threshold)
         candidates = {}
 
@@ -82,7 +109,15 @@ class CountMinSketch:
         self._observed_keys.update(other._observed_keys)
 
     def estimate_error(self, confidence: float = 0.95) -> float:
-        """Estimate maximum counting error."""
+        """
+        Estimate maximum counting error.
+
+        Args:
+            confidence: Confidence level for the error bound
+
+        Returns:
+            Maximum expected counting error at given confidence level
+        """
         epsilon = 2.0 / self.width
         delta = pow(2.0, -self.depth)
 

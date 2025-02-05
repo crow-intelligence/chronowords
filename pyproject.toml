@@ -28,6 +28,7 @@ requests = "^2.32.3"
 spacy = "^3.8.4"
 pandas = "^2.2.3"
 notebook = "^7.3.2"
+altair = "^5.5.0"
 
 [build-system]
 requires = ["poetry-core", "setuptools", "wheel", "Cython", "numpy"]
