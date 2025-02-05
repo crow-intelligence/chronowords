@@ -19,6 +19,15 @@ class AlignmentMetrics:
         average_cosine_similarity: Mean cosine similarity between aligned word pairs
         num_aligned_words: Number of words successfully aligned
         alignment_error: Frobenius norm of the difference between aligned matrices
+
+    Examples:
+        >>> metrics = AlignmentMetrics(0.85, 1000, 0.15)
+        >>> metrics.average_cosine_similarity
+        0.85
+        >>> metrics.num_aligned_words
+        1000
+        >>> metrics.alignment_error
+        0.15
     """
 
     average_cosine_similarity: float
@@ -49,15 +58,20 @@ class ProcustesAligner:
         Args:
             min_freq_rank: Minimum frequency rank for anchor words
             max_freq_rank: Maximum frequency rank for anchor words
+
+        Examples:
+            >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=10)
+            >>> aligner.min_freq_rank
+            0
+            >>> aligner.max_freq_rank
+            10
         """
         self.min_freq_rank = min_freq_rank
         self.max_freq_rank = max_freq_rank
         self.orthogonal_matrix: Optional[np.ndarray] = None
         self.source_words: List[str] = []
         self.target_words: List[str] = []
-        self.anchors: Dict[str, Tuple[int, int]] = (
-            {}
-        )  # word -> (source_idx, target_idx)
+        self.anchors: Dict[str, Tuple[int, int]] = {}
 
     def find_common_words(
         self, source_vocab: List[str], target_vocab: List[str]
@@ -69,8 +83,14 @@ class ProcustesAligner:
 
         Returns:
             List of common words sorted alphabetically
+
+        Examples:
+            >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=2)
+            >>> source = ['the', 'in', 'a', 'rare']
+            >>> target = ['in', 'the', 'new', 'a']
+            >>> aligner.find_common_words(source, target)
+            ['in', 'the']
         """
-        # Convert to sets and find intersection
         source_set = set(source_vocab[self.min_freq_rank : self.max_freq_rank])
         target_set = set(target_vocab[self.min_freq_rank : self.max_freq_rank])
         return sorted(source_set.intersection(target_set))
@@ -83,8 +103,7 @@ class ProcustesAligner:
         target_vocab: List[str],
         anchor_words: Optional[List[str]] = None,
     ) -> AlignmentMetrics:
-        """
-        Learn the orthogonal transformation matrix using Procrustes analysis.
+        """Learn the orthogonal transformation matrix using Procrustes analysis.
 
         Args:
             source_embeddings: Source space word embeddings
@@ -97,8 +116,17 @@ class ProcustesAligner:
         Returns:
             AlignmentMetrics containing quality measures of the alignment
 
-        Raises:
-            ValueError: If no common words found or all vectors are zero
+        Examples:
+            >>> import numpy as np
+            >>> aligner = ProcustesAligner()
+            >>> source_emb = np.array([[1., 0.], [0., 1.]])
+            >>> target_emb = np.array([[0., 1.], [-1., 0.]])  # 90 degree rotation
+            >>> vocab = ['word1', 'word2']
+            >>> metrics = aligner.fit(source_emb, target_emb, vocab, vocab, ['word1', 'word2'])
+            >>> metrics.num_aligned_words
+            2
+            >>> round(metrics.average_cosine_similarity, 2)
+            1.0
         """
         self.source_words = source_vocab
         self.target_words = target_vocab
@@ -172,14 +200,23 @@ class ProcustesAligner:
         )
 
     def transform(self, embeddings: np.ndarray) -> np.ndarray:
-        """
-        Apply the learned transformation to align embeddings.
+        """Apply the learned transformation to align embeddings.
 
         Args:
             embeddings: Embeddings to transform
 
         Returns:
             Transformed embeddings in the target space
+
+        Examples:
+            >>> import numpy as np
+            >>> aligner = ProcustesAligner()
+            >>> # No need to set source_words/target_words since we're just testing transform
+            >>> aligner.orthogonal_matrix = np.array([[0, 1], [-1, 0]])  # 90 degree rotation
+            >>> embeddings = np.array([[1, 0], [0, 1]])
+            >>> aligned = aligner.transform(embeddings)
+            >>> np.allclose(aligned, np.array([[0, 1], [-1, 0]]))
+            True
         """
         if self.orthogonal_matrix is None:
             raise ValueError("Aligner must be fit before transform")
@@ -199,6 +236,17 @@ class ProcustesAligner:
             Cosine similarity [-1,1] between aligned vectors,
             higher values indicate more similar usage between periods.
             Returns None if word not found in either vocabulary.
+
+        Examples:
+            >>> import numpy as np
+            >>> aligner = ProcustesAligner()
+            >>> aligner.source_words = ['cat', 'dog']  # Set after initialization
+            >>> aligner.target_words = ['cat', 'dog']  # Set after initialization
+            >>> aligner.orthogonal_matrix = np.eye(2)
+            >>> source_emb = np.array([[1., 0.], [0., 1.]])
+            >>> target_emb = np.array([[1., 0.], [0., 1.]])
+            >>> round(aligner.get_word_similarity('cat', source_emb, target_emb), 2)
+            1.0
         """
         try:
             source_idx = self.source_words.index(word)

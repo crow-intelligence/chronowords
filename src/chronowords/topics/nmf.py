@@ -20,6 +20,17 @@ class Topic:
         id: Unique topic identifier
         words: List of (word, weight) pairs for top words
         distribution: Full probability distribution over vocabulary
+
+    Examples:
+        >>> import numpy as np
+        >>> dist = np.array([0.5, 0.3, 0.2])
+        >>> topic = Topic(1, [('cat', 0.5), ('dog', 0.3)], dist)
+        >>> topic.id
+        1
+        >>> topic.words
+        [('cat', 0.5), ('dog', 0.3)]
+        >>> np.allclose(topic.distribution, [0.5, 0.3, 0.2])
+        True
     """
 
     id: int
@@ -35,6 +46,19 @@ class AlignedTopic:
         source_topic: Topic from source time period
         target_topic: Topic from target time period
         similarity: Cosine similarity between topics
+
+    Examples:
+        >>> import numpy as np
+        >>> dist = np.array([0.5, 0.3, 0.2])
+        >>> topic1 = Topic(1, [('cat', 0.5)], dist)
+        >>> topic2 = Topic(2, [('dog', 0.4)], dist)
+        >>> aligned = AlignedTopic(topic1, topic2, 0.8)
+        >>> aligned.source_topic.id
+        1
+        >>> aligned.target_topic.id
+        2
+        >>> aligned.similarity
+        0.8
     """
 
     source_topic: Topic
@@ -86,7 +110,18 @@ class TopicModel:
             vocabulary: List of words corresponding to matrix columns
             top_n_words: Number of top words to store per topic
 
-        The method performs NMF factorization and normalizes topic distributions.
+        Examples:
+            >>> import numpy as np
+            >>> from scipy.sparse import csr_matrix
+            >>> model = TopicModel(n_topics=2)
+            >>> ppmi = csr_matrix([[1, 0], [0, 1]])
+            >>> model.fit(ppmi, ['word1', 'word2'])
+            >>> len(model.topics)
+            2
+            >>> isinstance(model.topics[0], Topic)
+            True
+            >>> len(model.vocabulary)
+            2
         """
         self.vocabulary = vocabulary
 
@@ -124,8 +159,7 @@ class TopicModel:
     def get_document_topics(
         self, doc_vector: np.ndarray, threshold: float = 0.1
     ) -> List[Tuple[int, float]]:
-        """
-        Get topic distribution for a document vector.
+        """Get topic distribution for a document vector.
 
         Args:
             doc_vector: Document vector in vocabulary space
@@ -133,6 +167,19 @@ class TopicModel:
 
         Returns:
             List of (topic_id, weight) pairs
+
+        Examples:
+            >>> import numpy as np
+            >>> from scipy.sparse import csr_matrix
+            >>> model = TopicModel(n_topics=2)
+            >>> ppmi = csr_matrix([[1, 0], [0, 1]])
+            >>> model.fit(ppmi, ['word1', 'word2'])
+            >>> doc = np.array([0.8, 0.2])
+            >>> topics = model.get_document_topics(doc, threshold=0.1)
+            >>> len(topics) > 0
+            True
+            >>> all(w >= 0.1 for _, w in topics)
+            True
         """
         if self.topic_word_matrix is None:
             raise ValueError("Model must be fit before getting document topics")
@@ -153,20 +200,43 @@ class TopicModel:
         return sorted(topic_weights, key=lambda x: x[1], reverse=True)
 
     def _compute_topic_similarity(self, topic1: Topic, topic2: Topic) -> float:
-        """Compute cosine similarity between topic distributions."""
+        """Compute cosine similarity between topic distributions.
+
+        Examples:
+            >>> import numpy as np
+            >>> model = TopicModel()
+            >>> dist1 = np.array([1, 0])
+            >>> dist2 = np.array([0, 1])
+            >>> t1 = Topic(1, [('cat', 1.0)], dist1)
+            >>> t2 = Topic(2, [('dog', 1.0)], dist2)
+            >>> sim = model._compute_topic_similarity(t1, t2)
+            >>> round(sim, 1)
+            0.0
+        """
         return 1 - cosine(topic1.distribution, topic2.distribution)
 
     def align_with(self, other: "TopicModel") -> List[AlignedTopic]:
         """Align topics with another model using Hungarian algorithm.
-
-        Finds optimal matching between topic sets by maximizing total similarity.
-        Only returns pairs above min_similarity threshold.
 
         Args:
             other: Another fitted TopicModel
 
         Returns:
             List of aligned topic pairs sorted by similarity
+
+        Examples:
+            >>> import numpy as np
+            >>> from scipy.sparse import csr_matrix
+            >>> model1 = TopicModel(n_topics=2)
+            >>> model2 = TopicModel(n_topics=2)
+            >>> ppmi = csr_matrix([[1, 0], [0, 1]])
+            >>> model1.fit(ppmi, ['word1', 'word2'])
+            >>> model2.fit(ppmi, ['word1', 'word2'])
+            >>> aligned = model1.align_with(model2)
+            >>> len(aligned) > 0
+            True
+            >>> isinstance(aligned[0], AlignedTopic)
+            True
         """
         if not self.topics or not other.topics:
             raise ValueError("Both models must be fit before alignment")

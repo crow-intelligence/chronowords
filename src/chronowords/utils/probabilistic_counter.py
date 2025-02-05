@@ -6,12 +6,18 @@ import numpy as np
 
 
 class CountMinSketch:
-    """
-    Count-Min Sketch implementation for memory-efficient counting.
+    """Count-Min Sketch implementation for memory-efficient counting.
 
     Uses multiple hash functions to approximate frequencies with bounded error.
     Memory usage: width * depth * 4 bytes
     Error bound: ≈ 2/width with probability 1 - 1/2^depth
+
+    Examples:
+        >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
+        >>> cms.width
+        1000
+        >>> cms.depth
+        5
     """
 
     def __init__(self, width: int = 1_000_000, depth: int = 5, seed: int = 42):
@@ -39,12 +45,23 @@ class CountMinSketch:
         self._observed_keys = set()
 
     def update(self, key: Union[str, bytes], count: int = 1) -> None:
-        """
-        Update count for a key.
+        """Update count for a key.
 
         Args:
             key: Item to count (string or bytes)
             count: Amount to increment (default: 1)
+
+        Examples:
+            >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> cms.update("apple")
+            >>> cms.update("apple")
+            >>> cms.query("apple")
+            2
+            >>> cms.update("banana", count=5)
+            >>> cms.query("banana")
+            5
+            >>> cms.total
+            7
         """
         if isinstance(key, str):
             key = key.encode()
@@ -61,7 +78,16 @@ class CountMinSketch:
             self.counts[i, idx] += count
 
     def query(self, key: Union[str, bytes]) -> int:
-        """Query count for a key."""
+        """Query count for a key.
+
+        Examples:
+            >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> cms.update("rare_word")
+            >>> cms.query("rare_word")
+            1
+            >>> cms.query("unseen_word")
+            0
+        """
         if isinstance(key, str):
             key = key.encode()
 
@@ -74,14 +100,27 @@ class CountMinSketch:
         return int(min_count)
 
     def get_heavy_hitters(self, threshold: float) -> List[Tuple[str, int]]:
-        """
-        Get items that appear more than threshold * total times.
+        """Get items that appear more than threshold * total times.
 
         Args:
             threshold: Minimum frequency as fraction of total counts
 
         Returns:
             List of (item, count) pairs sorted by count descending
+
+        Examples:
+            >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> # Add a frequent word
+            >>> for _ in range(100):
+            ...     cms.update("frequent")
+            >>> # Add some less frequent words
+            >>> for _ in range(10):
+            ...     cms.update("rare")
+            >>> heavy = cms.get_heavy_hitters(threshold=0.05)  # 5% threshold
+            >>> len(heavy) > 0
+            True
+            >>> "frequent" == heavy[0][0]  # Most frequent word
+            True
         """
         threshold_count = int(self.total * threshold)
         candidates = {}
@@ -96,7 +135,25 @@ class CountMinSketch:
         return sorted(candidates.items(), key=lambda x: x[1], reverse=True)
 
     def merge(self, other: "CountMinSketch") -> None:
-        """Merge another sketch into this one."""
+        """Merge another sketch into this one.
+
+        Examples:
+            >>> cms1 = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> cms2 = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> cms1.update("word", count=3)
+            >>> cms2.update("word", count=2)
+            >>> cms1.merge(cms2)
+            >>> cms1.query("word")
+            5
+            >>> cms1.total
+            5
+
+            >>> # Error case - incompatible sketches
+            >>> cms3 = CountMinSketch(width=500, depth=5, seed=42)
+            >>> cms1.merge(cms3)  # doctest: +IGNORE_EXCEPTION_DETAIL
+            Traceback (most recent call last):
+            ValueError: Can only merge compatible sketches
+        """
         if (
             self.width != other.width
             or self.depth != other.depth
@@ -109,14 +166,23 @@ class CountMinSketch:
         self._observed_keys.update(other._observed_keys)
 
     def estimate_error(self, confidence: float = 0.95) -> float:
-        """
-        Estimate maximum counting error.
+        """Estimate maximum counting error.
 
         Args:
             confidence: Confidence level for the error bound
 
         Returns:
             Maximum expected counting error at given confidence level
+
+        Examples:
+            >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
+            >>> for _ in range(1000):
+            ...     cms.update("word")
+            >>> error = cms.estimate_error(confidence=0.95)
+            >>> error > 0  # Should have some error estimation
+            True
+            >>> error < cms.total  # Error should be less than total counts
+            True
         """
         epsilon = 2.0 / self.width
         delta = pow(2.0, -self.depth)
@@ -128,5 +194,16 @@ class CountMinSketch:
 
     @property
     def arrays(self) -> Tuple[np.ndarray, List[int], int]:
-        """Get raw arrays and parameters for Cython code."""
+        """Get raw arrays and parameters for Cython code.
+
+        Examples:
+            >>> cms = CountMinSketch(width=3, depth=2, seed=42)
+            >>> counts, seeds, width = cms.arrays
+            >>> counts.shape
+            (2, 3)
+            >>> isinstance(seeds, list)
+            True
+            >>> width
+            3
+        """
         return self.counts, self.seeds, self.width

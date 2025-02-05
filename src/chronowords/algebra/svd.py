@@ -18,7 +18,15 @@ from ..utils.probabilistic_counter import CountMinSketch
 
 @dataclass
 class WordSimilarity:
-    """Container for word similarity results."""
+    """Container for word similarity results.
+
+    Examples:
+        >>> sim = WordSimilarity("cat", 0.85)
+        >>> sim.word
+        'cat'
+        >>> sim.similarity
+        0.85
+    """
 
     word: str
     similarity: float
@@ -26,7 +34,15 @@ class WordSimilarity:
 
 @dataclass
 class AnalogyResult:
-    """Container for word analogy results."""
+    """Container for word analogy results.
+
+    Examples:
+        >>> result = AnalogyResult(["queen"], [0.76])
+        >>> result.words
+        ['queen']
+        >>> result.similarities
+        [0.76]
+    """
 
     words: List[str]
     similarities: List[float]
@@ -67,11 +83,24 @@ class SVDAlgebra:
         self.embeddings: Optional[np.ndarray] = None
 
     def train(self, corpus: Generator[str, None, None]) -> None:
-        """
-        Train the model on a text corpus using Count-Min Sketch and Cython optimizations.
+        """Train the model on a text corpus using Count-Min Sketch and Cython optimizations.
 
         Args:
             corpus: Generator yielding text lines
+
+        Examples:
+            >>> algebra = SVDAlgebra(n_components=2)
+            >>> corpus = (line for line in [
+            ...     "the cat sat",
+            ...     "the dog ran"
+            ... ])
+            >>> algebra.train(corpus)  # doctest: +ELLIPSIS
+            Counting words and skipgrams...
+            ...
+            >>> len(algebra.vocabulary) > 0
+            True
+            >>> algebra.embeddings.shape[1] == 2
+            True
         """
         # Initialize Count-Min Sketches
         word_counter = CountMinSketch(self.cms_width, self.cms_depth)
@@ -196,14 +225,22 @@ class SVDAlgebra:
             self.vocabulary = pickle.load(f)
 
     def get_vector(self, word: str) -> Optional[np.ndarray]:
-        """
-        Get the embedding vector for a word.
+        """Get the embedding vector for a word.
 
         Args:
             word: Input word
 
         Returns:
             Word vector if word is in vocabulary, None otherwise
+
+        Examples:
+            >>> algebra = SVDAlgebra(n_components=2)
+            >>> algebra.vocabulary = ["cat", "dog"]
+            >>> algebra.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+            >>> algebra.get_vector("cat")
+            array([1., 0.])
+            >>> algebra.get_vector("unknown") is None
+            True
         """
         try:
             idx = self.vocabulary.index(word)
@@ -212,8 +249,7 @@ class SVDAlgebra:
             return None
 
     def most_similar(self, word: str, n: int = 10) -> List[WordSimilarity]:
-        """
-        Find the n most similar words.
+        """Find the n most similar words.
 
         Args:
             word: Query word
@@ -221,6 +257,18 @@ class SVDAlgebra:
 
         Returns:
             List of WordSimilarity objects sorted by similarity
+
+        Examples:
+            >>> algebra = SVDAlgebra(n_components=2)
+            >>> algebra.vocabulary = ["cat", "dog", "fish"]
+            >>> algebra.embeddings = np.array([[1.0, 0.0], [0.8, 0.2], [0.0, 1.0]])
+            >>> results = algebra.most_similar("cat", n=2)
+            >>> len(results)
+            2
+            >>> results[0].word
+            'dog'
+            >>> round(results[0].similarity, 2)
+            0.97
         """
         vector = self.get_vector(word)
         if vector is None:
@@ -261,8 +309,7 @@ class SVDAlgebra:
         return results
 
     def distance(self, word1: str, word2: str) -> Optional[float]:
-        """
-        Calculate cosine distance between two words.
+        """Calculate cosine distance between two words.
 
         Args:
             word1: First word
@@ -270,6 +317,15 @@ class SVDAlgebra:
 
         Returns:
             Cosine distance between word vectors, or None if either word is unknown
+
+        Examples:
+            >>> algebra = SVDAlgebra(n_components=2)
+            >>> algebra.vocabulary = ["cat", "dog"]
+            >>> algebra.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+            >>> round(algebra.distance("cat", "dog"), 2)
+            1.0
+            >>> algebra.distance("cat", "unknown") is None
+            True
         """
         vec1 = self.get_vector(word1)
         vec2 = self.get_vector(word2)
