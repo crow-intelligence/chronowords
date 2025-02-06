@@ -198,3 +198,6 @@ models/
 
 docs/build/
 docs/_build/
+
+data/*.txt
+data/*.json

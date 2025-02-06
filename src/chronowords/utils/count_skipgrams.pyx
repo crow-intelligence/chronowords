@@ -23,7 +23,6 @@ DTYPE = np.int32
 ctypedef np.int32_t DTYPE_t
 
 cdef class PPMIComputer:
-    cdef class PPMIComputer:
     """
     Encapsulates PPMI computation state and methods.
 
@@ -31,32 +30,6 @@ cdef class PPMIComputer:
     memory-efficient PPMI matrix computation.
     """
 
-    cdef int _get_min_count(self, bytes word_bytes) except -1:
-        """
-        Get minimum count from Count-Min Sketch arrays.
-        
-        Args:
-            word_bytes: Encoded word to look up
-            
-        Returns:
-            Minimum count across hash functions
-            
-        Raises:
-            -1 on error
-        """
-
-    cdef:
-        object skipgram_counts  # np.ndarray but kept as object for gil
-        object word_counts  # np.ndarray but kept as object for gil
-        object vocabulary  # list of words
-        list seeds  # hash function seeds
-        int width
-        double skip_total
-        double word_total
-        double shift
-        double alpha
-        vector[double] word_probs
-        bint initialized
 
     def __init__(self,
                  np.ndarray skipgram_counts,
@@ -81,19 +54,31 @@ cdef class PPMIComputer:
         self.initialized = False
 
     cdef int _get_min_count(self, bytes word_bytes) except -1:
-        """Get minimum count from Count-Min Sketch arrays."""
-        cdef:
-            int i, idx, min_count = 0x7FFFFFFF
-            int depth = (<np.ndarray> self.skipgram_counts).shape[0]
-            np.ndarray[DTYPE_t, ndim=2] counts = self.skipgram_counts
+        """
+        Get minimum count from Count-Min Sketch arrays.
 
-        with nogil:
-            for i in range(depth):
-                with gil:
-                    # Need GIL for mmh3.hash
-                    idx = mmh3.hash(word_bytes, self.seeds[i]) % self.width
-                if counts[i, idx] < min_count:
-                    min_count = counts[i, idx]
+        Args:
+            word_bytes: Encoded word to look up
+
+        Returns:
+            Minimum count across hash functions
+
+        Raises:
+            -1 on error
+        """
+        cdef:
+            int i, idx, min_count
+            int depth
+            np.ndarray[DTYPE_t, ndim=2] counts
+
+        depth = (<np.ndarray> self.skipgram_counts).shape[0]
+        counts = self.skipgram_counts
+        min_count = 0x7FFFFFFF
+
+        for i in range(depth):
+            idx = mmh3.hash(word_bytes, self.seeds[i]) % self.width
+            if counts[i, idx] < min_count:
+                min_count = counts[i, idx]
 
         return min_count
 
