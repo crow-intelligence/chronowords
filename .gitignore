@@ -201,3 +201,4 @@ docs/_build/
 
 data/*.txt
 data/*.json
+data/corpus
