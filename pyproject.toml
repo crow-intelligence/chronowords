@@ -61,3 +61,11 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = []
+
+[tool.poetry.group.docs]
+optional = true
+dependencies = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints"
+]
