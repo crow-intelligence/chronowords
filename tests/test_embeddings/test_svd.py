@@ -3,7 +3,7 @@ import pytest
 from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
-from chronowords.utils.count_skipgrams import compute_ppmi_matrix_with_sketch
+from chronowords.utils.count_skipgrams import PPMIComputer
 from chronowords.utils.probabilistic_counter import CountMinSketch
 
 
@@ -182,7 +182,7 @@ def test_ppmi_computation():
     ]
 
     for param in params:
-        matrix = compute_ppmi_matrix_with_sketch(
+        computer = PPMIComputer(
             skipgram_counts=counts,
             word_counts=counts,
             vocabulary=vocabulary,
@@ -192,6 +192,7 @@ def test_ppmi_computation():
             word_total=sum(counts[0]),
             **param,
         )
+        matrix = computer.compute_ppmi_matrix_with_sketch()
 
         # Check matrix properties
         assert isinstance(matrix, csr_matrix)
@@ -256,7 +257,7 @@ def test_ppmi_batch_processing(batch_size):
     counts[0, :vocab_size] = 10  # Set some counts
     vocabulary = [f"word{i}" for i in range(vocab_size)]
 
-    matrix = compute_ppmi_matrix_with_sketch(
+    computer = PPMIComputer(
         skipgram_counts=counts,
         word_counts=counts,
         vocabulary=vocabulary,
@@ -264,8 +265,8 @@ def test_ppmi_batch_processing(batch_size):
         width=100,
         skip_total=float(vocab_size * 10),
         word_total=float(vocab_size * 10),
-        batch_size=batch_size,
     )
+    matrix = computer.compute_ppmi_matrix_with_sketch(batch_size=batch_size)
 
     assert matrix.shape == (vocab_size, vocab_size)
 

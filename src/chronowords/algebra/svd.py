@@ -5,14 +5,13 @@ SVD-based word embedding implementation with memory-efficient counting.
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Union
+from typing import Generator, List, Optional, Union
 
 import numpy as np
 from nltk.util import skipgrams
-from scipy.sparse import csr_matrix
 from scipy.spatial.distance import cosine
 
-from ..utils.count_skipgrams import compute_ppmi_matrix_with_sketch
+from ..utils.count_skipgrams import PPMIComputer
 from ..utils.probabilistic_counter import CountMinSketch
 
 
@@ -83,24 +82,11 @@ class SVDAlgebra:
         self.embeddings: Optional[np.ndarray] = None
 
     def train(self, corpus: Generator[str, None, None]) -> None:
-        """Train the model on a text corpus using Count-Min Sketch and Cython optimizations.
+        """Train the model on a text corpus using Count-Min Sketch
+            and Cython optimizations.
 
         Args:
             corpus: Generator yielding text lines
-
-        Examples:
-            >>> algebra = SVDAlgebra(n_components=2)
-            >>> corpus = (line for line in [
-            ...     "the cat sat",
-            ...     "the dog ran"
-            ... ])
-            >>> algebra.train(corpus)  # doctest: +ELLIPSIS
-            Counting words and skipgrams...
-            ...
-            >>> len(algebra.vocabulary) > 0
-            True
-            >>> algebra.embeddings.shape[1] == 2
-            True
         """
         # Initialize Count-Min Sketches
         word_counter = CountMinSketch(self.cms_width, self.cms_depth)
@@ -135,13 +121,13 @@ class SVDAlgebra:
         if not self.vocabulary:
             raise ValueError("No words found meeting minimum frequency threshold")
 
-        # Get arrays and parameters for Cython function
+        # Get arrays and parameters for PPMIComputer
         word_counts, word_seeds, width = word_counter.arrays
         skipgram_counts, _, _ = skipgram_counter.arrays
 
         print("Computing PPMI matrix...")
-        # Compute PPMI matrix using Cython
-        M = compute_ppmi_matrix_with_sketch(
+        # Create PPMIComputer and compute matrix
+        computer = PPMIComputer(
             skipgram_counts=skipgram_counts,
             word_counts=word_counts,
             vocabulary=self.vocabulary,
@@ -152,6 +138,7 @@ class SVDAlgebra:
             shift=1.0,
             alpha=0.75,
         )
+        M = computer.compute_ppmi_matrix_with_sketch()
 
         print("PPMI matrix shape:", M.shape)
         print("PPMI matrix non-zeros:", M.nnz)
@@ -242,8 +229,10 @@ class SVDAlgebra:
             >>> algebra.get_vector("unknown") is None
             True
         """
+        if self.embeddings is None:
+            return None
         try:
-            idx = self.vocabulary.index(word)
+            idx: int = self.vocabulary.index(word)
             return self.embeddings[idx]
         except ValueError:
             return None

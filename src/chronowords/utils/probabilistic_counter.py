@@ -1,5 +1,4 @@
-from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 import mmh3
 import numpy as np
@@ -42,7 +41,7 @@ class CountMinSketch:
         self.seeds = [int(s) for s in rng.randint(0, 1_000_000, size=depth)]
 
         # Keep track of all observed keys
-        self._observed_keys = set()
+        self._observed_keys: set[str] = set()
 
     def update(self, key: Union[str, bytes], count: int = 1) -> None:
         """Update count for a key.
