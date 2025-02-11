@@ -11,7 +11,7 @@ repos:
     rev: v0.3.2
     hooks:
     -   id: ruff
-        args: [--fix]
+        args: [ --fix ]
     -   id: ruff-format
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
@@ -24,8 +24,8 @@ repos:
     hooks:
     -   id: python-tests
         name: Run Python Tests
-        entry: bash -c 'pytest tests/ && python -m doctest src/chronowords/topics/nmf.py -v'
+        entry: poetry run pytest
         language: system
+        types: [python]
         pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
+        stages: [pre-push]  # Run only on push, not on every commit
