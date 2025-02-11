@@ -19,13 +19,3 @@ repos:
     hooks:
     -   id: mypy
         additional_dependencies: ['types-setuptools', 'types-requests']
-
--   repo: local
-    hooks:
-    -   id: python-tests
-        name: Run Python Tests
-        entry: poetry run pytest
-        language: system
-        types: [python]
-        pass_filenames: false
-        stages: [pre-push]  # Run only on push, not on every commit

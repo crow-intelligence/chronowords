@@ -45,11 +45,16 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: poetry install --with dev --no-interaction
 
-      - name: Run tests
-        run: poetry run pytest -v
+      - name: Run tests and doctests
+        run: |
+          poetry run pytest -v
+          poetry run python -m doctest src/chronowords/topics/nmf.py -v
 
-      - name: Run type checks
-        run: poetry run mypy src/
-
-      - name: Run linting
-        run: poetry run ruff check src/
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: test-results-${{ matrix.python-version }}-${{ matrix.os }}
+          path: |
+            .pytest_cache
+            test-results/
