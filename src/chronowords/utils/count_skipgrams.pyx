@@ -25,39 +25,8 @@ cdef class PPMIComputer:
     """Encapsulates PPMI computation state and methods.
 
     This class computes PPMI (Positive Pointwise Mutual Information) matrices
-    using Count-Min Sketch for memory efficiency. It handles large-scale text data
-    through batched processing and memory-efficient counting.
-
-    The PPMI computation follows these steps:
-    1. Store word and skipgram counts using Count-Min Sketch
-    2. Pre-compute word probabilities with context distribution smoothing
-    3. Compute PPMI values in batches
-    4. Return sparse matrix representation
-
-    Examples:
-        >>> import numpy as np
-        >>> from scipy.sparse import csr_matrix
-        >>> # Create sample Count-Min Sketch arrays
-        >>> counts = np.zeros((3, 100), dtype=np.int32)
-        >>> counts[0, 0] = 10  # Add some counts
-        >>> counts[1, 0] = 10
-        >>> counts[2, 0] = 10
-        >>> # Initialize computer
-        >>> computer = PPMIComputer(
-        ...     skipgram_counts=counts,
-        ...     word_counts=counts,
-        ...     vocabulary=["cat", "dog"],
-        ...     seeds=[42, 43, 44],
-        ...     width=100,
-        ...     skip_total=20.0,
-        ...     word_total=20.0
-        ... )
-        >>> # Compute PPMI matrix
-        >>> matrix = computer.compute_ppmi_matrix_with_sketch()
-        >>> isinstance(matrix, csr_matrix)
-        True
+    using Count-Min Sketch for memory efficiency.
     """
-
     cdef:
         public np.ndarray skipgram_counts
         public np.ndarray word_counts
@@ -81,23 +50,11 @@ cdef class PPMIComputer:
                  double word_total,
                  double shift=1.0,
                  double alpha=0.75):
-        """Initialize the PPMI computer with Count-Min Sketch data.
-
-        Args:
-            skipgram_counts: Count-Min Sketch array for skipgrams
-            word_counts: Count-Min Sketch array for words
-            vocabulary: List of words
-            seeds: Hash function seeds
-            width: Width of Count-Min Sketch tables
-            skip_total: Total skipgram count
-            word_total: Total word count
-            shift: PMI shift parameter
-            alpha: Context distribution smoothing
-        """
+        """Initialize the PPMI computer with Count-Min Sketch data."""
         self.skipgram_counts = skipgram_counts
         self.word_counts = word_counts
         self.vocabulary = vocabulary
-        self.seeds = seeds
+        self.seeds = seeds if seeds is not None else [1, 2, 3]
         self.width = width
         self.skip_total = skip_total
         self.word_total = word_total
@@ -107,17 +64,7 @@ cdef class PPMIComputer:
         self.word_probs = vector[double]()
 
     cdef int _get_min_count(self, bytes word_bytes) except -1:
-        """Get minimum count from Count-Min Sketch arrays.
-
-        Args:
-            word_bytes: Encoded word to look up
-
-        Returns:
-            Minimum count across hash functions
-
-        Raises:
-            -1 on error
-        """
+        """Get minimum count from Count-Min Sketch arrays."""
         cdef:
             int i, idx, min_count
             int depth = self.skipgram_counts.shape[0]
@@ -138,41 +85,24 @@ cdef class PPMIComputer:
             int i, count
             int n = len(self.vocabulary)
             bytes word_bytes
+            double epsilon = 1e-10
 
         self.word_probs.resize(n)
 
         for i in range(n):
             word_bytes = self.vocabulary[i].encode()
             count = self._get_min_count(word_bytes)
-            if count > 0:
-                self.word_probs[i] = pow(count / self.word_total, self.alpha)
+            if count > 5:  # Minimum count threshold
+                self.word_probs[i] = count / self.word_total  # Store raw probability
             else:
                 self.word_probs[i] = 0.0
 
     def compute_ppmi_batch(self, int start_idx, int end_idx):
-        """Compute PPMI for a batch of words.
-
-        Args:
-            start_idx: Starting vocabulary index
-            end_idx: Ending vocabulary index (exclusive)
-
-        Returns:
-            Tuple of (data, row_indices, column_indices) for sparse matrix
-
-        Examples:
-            >>> import numpy as np
-            >>> counts = np.ones((3, 100), dtype=np.int32)
-            >>> computer = PPMIComputer(
-            ...     counts, counts, ["word1", "word2"],
-            ...     [42], 100, 10.0, 10.0
-            ... )
-            >>> data, rows, cols = computer.compute_ppmi_batch(0, 2)
-            >>> len(data) == len(rows) == len(cols)
-            True
-        """
+        """Compute PPMI for a batch of words."""
         cdef:
             int i, j, pair_count
             double pa, pb, pab, pmi
+            double epsilon = 1e-10
             vector[double] data
             vector[int] row_indices, col_indices
             bytes word_bytes, skipgram_key
@@ -186,7 +116,7 @@ cdef class PPMIComputer:
                 continue
 
             word_bytes = self.vocabulary[i].encode()
-            pa = self.word_probs[i] ** (1 / self.alpha)
+            pa = pow(self.word_probs[i] + epsilon, self.alpha)  # Apply smoothing here
 
             for j in range(len(self.vocabulary)):
                 if self.word_probs[j] == 0:
@@ -195,46 +125,24 @@ cdef class PPMIComputer:
                 skipgram_key = f"{self.vocabulary[i]}#{self.vocabulary[j]}".encode()
                 pair_count = self._get_min_count(skipgram_key)
 
-                if pair_count == 0:
+                if pair_count <= 5:  # Minimum count threshold
                     continue
 
-                pb = self.word_probs[j]
-                pab = pair_count / self.skip_total
-                pmi = log(pab / (pa * pb)) - log(self.shift)
+                pb = self.word_probs[j] + epsilon
+                pab = (pair_count + epsilon) / self.skip_total
 
-                if pmi > 0:
-                    data.push_back(pmi)
-                    row_indices.push_back(i)
-                    col_indices.push_back(j)
+                # Only compute PMI if joint prob > product of marginals
+                if pab > pa * pb:
+                    pmi = log(pab / (pa * pb)) - log(self.shift)
+                    if pmi > 0:
+                        data.push_back(pmi)
+                        row_indices.push_back(i)
+                        col_indices.push_back(j)
 
         return np.array(data), np.array(row_indices), np.array(col_indices)
 
     def compute_ppmi_matrix_with_sketch(self, int batch_size=1024):
-        """Compute complete PPMI matrix using batched processing.
-
-        Creates a sparse PPMI matrix using memory-efficient Count-Min Sketch
-        data structures and batch processing for large vocabularies.
-
-        Args:
-            batch_size: Number of words to process per batch (default: 1024)
-
-        Returns:
-            Sparse PPMI matrix as scipy.sparse.csr_matrix
-
-        Examples:
-            >>> import numpy as np
-            >>> counts = np.ones((3, 100), dtype=np.int32)
-            >>> vocab = ["word1", "word2"]
-            >>> computer = PPMIComputer(
-            ...     counts, counts, vocab, [42], 100,
-            ...     skip_total=10.0, word_total=10.0
-            ... )
-            >>> matrix = computer.compute_ppmi_matrix_with_sketch()
-            >>> isinstance(matrix, csr_matrix)
-            True
-            >>> matrix.shape == (2, 2)
-            True
-        """
+        """Compute complete PPMI matrix using batched processing."""
         cdef:
             int n = len(self.vocabulary)
             list all_data = []

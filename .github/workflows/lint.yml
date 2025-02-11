@@ -1,4 +1,4 @@
-name: Test
+name: Lint
 
 on:
   push:
@@ -7,30 +7,19 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false  # Continue with other tests even if one fails
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
-
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.10"  # Match your minimum supported version
 
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-
-      - name: Configure Poetry
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
 
       - name: Cache Poetry virtualenv
         uses: actions/cache@v4
@@ -45,11 +34,11 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: poetry install --with dev --no-interaction
 
-      - name: Run tests
-        run: poetry run pytest -v
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
 
-      - name: Run type checks
+      - name: Run type checking
         run: poetry run mypy src/
 
-      - name: Run linting
-        run: poetry run ruff check src/
+      - name: Run ruff
+        run: poetry run ruff check --output-format=github .

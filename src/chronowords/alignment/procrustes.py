@@ -1,11 +1,8 @@
-"""
-Procrustes alignment for comparing word embeddings from different time periods.
-"""
+"""Procrustes alignment for comparing word embeddings from different time periods."""
 
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.linalg import orthogonal_procrustes
@@ -20,7 +17,8 @@ class AlignmentMetrics:
         num_aligned_words: Number of words successfully aligned
         alignment_error: Frobenius norm of the difference between aligned matrices
 
-    Examples:
+    Examples
+    --------
         >>> metrics = AlignmentMetrics(0.85, 1000, 0.15)
         >>> metrics.average_cosine_similarity
         0.85
@@ -28,6 +26,7 @@ class AlignmentMetrics:
         1000
         >>> metrics.alignment_error
         0.15
+
     """
 
     average_cosine_similarity: float
@@ -41,55 +40,62 @@ class ProcustesAligner:
     Finds optimal orthogonal transformation to align embeddings while preserving distances.
 
     Example:
+    -------
         aligner = ProcustesAligner()
         metrics = aligner.fit(
             embeddings_1800, embeddings_1850,
             vocab_1800, vocab_1850
         )
         aligned_embeddings = aligner.transform(embeddings_1800)
+
     """
 
     def __init__(
-        self, min_freq_rank: Optional[int] = None, max_freq_rank: Optional[int] = 1000
+        self, min_freq_rank: int | None = None, max_freq_rank: int | None = 1000
     ):
-        """
-        Initialize the aligner.
+        """Initialize the aligner.
 
         Args:
+        ----
             min_freq_rank: Minimum frequency rank for anchor words
             max_freq_rank: Maximum frequency rank for anchor words
 
         Examples:
+        --------
             >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=10)
             >>> aligner.min_freq_rank
             0
             >>> aligner.max_freq_rank
             10
+
         """
         self.min_freq_rank = min_freq_rank
         self.max_freq_rank = max_freq_rank
-        self.orthogonal_matrix: Optional[np.ndarray] = None
-        self.source_words: List[str] = []
-        self.target_words: List[str] = []
-        self.anchors: Dict[str, Tuple[int, int]] = {}
+        self.orthogonal_matrix: np.ndarray | None = None
+        self.source_words: list[str] = []
+        self.target_words: list[str] = []
+        self.anchors: dict[str, tuple[int, int]] = {}
 
     def find_common_words(
-        self, source_vocab: List[str], target_vocab: List[str]
-    ) -> List[str]:
+        self, source_vocab: list[str], target_vocab: list[str]
+    ) -> list[str]:
         """Find common words between source and target vocabularies.
 
         Uses frequency rank filtering (min_freq_rank to max_freq_rank) to select
         stable anchor words for alignment.
 
-        Returns:
+        Returns
+        -------
             List of common words sorted alphabetically
 
-        Examples:
+        Examples
+        --------
             >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=2)
             >>> source = ['the', 'in', 'a', 'rare']
             >>> target = ['in', 'the', 'new', 'a']
             >>> aligner.find_common_words(source, target)
             ['in', 'the']
+
         """
         source_set = set(source_vocab[self.min_freq_rank : self.max_freq_rank])
         target_set = set(target_vocab[self.min_freq_rank : self.max_freq_rank])
@@ -99,13 +105,14 @@ class ProcustesAligner:
         self,
         source_embeddings: np.ndarray,
         target_embeddings: np.ndarray,
-        source_vocab: List[str],
-        target_vocab: List[str],
-        anchor_words: Optional[List[str]] = None,
+        source_vocab: list[str],
+        target_vocab: list[str],
+        anchor_words: list[str] | None = None,
     ) -> AlignmentMetrics:
         """Learn the orthogonal transformation matrix using Procrustes analysis.
 
         Args:
+        ----
             source_embeddings: Source space word embeddings
             target_embeddings: Target space word embeddings
             source_vocab: Vocabulary list for source embeddings
@@ -114,9 +121,11 @@ class ProcustesAligner:
                          If None, uses common words filtered by frequency rank
 
         Returns:
+        -------
             AlignmentMetrics containing quality measures of the alignment
 
         Examples:
+        --------
             >>> import numpy as np
             >>> aligner = ProcustesAligner()
             >>> source_emb = np.array([[1., 0.], [0., 1.]])
@@ -127,6 +136,7 @@ class ProcustesAligner:
             2
             >>> round(metrics.average_cosine_similarity, 2)
             1.0
+
         """
         self.source_words = source_vocab
         self.target_words = target_vocab
@@ -203,12 +213,15 @@ class ProcustesAligner:
         """Apply the learned transformation to align embeddings.
 
         Args:
+        ----
             embeddings: Embeddings to transform
 
         Returns:
+        -------
             Transformed embeddings in the target space
 
         Examples:
+        --------
             >>> import numpy as np
             >>> aligner = ProcustesAligner()
             >>> # No need to set source_words/target_words since we're just testing transform
@@ -217,6 +230,7 @@ class ProcustesAligner:
             >>> aligned = aligner.transform(embeddings)
             >>> np.allclose(aligned, np.array([[0, 1], [-1, 0]]))
             True
+
         """
         if self.orthogonal_matrix is None:
             raise ValueError("Aligner must be fit before transform")
@@ -228,16 +242,19 @@ class ProcustesAligner:
         """Get similarity between word representations in source and target spaces.
 
         Args:
+        ----
             word: Word to compare
             source_emb: Source embeddings
             target_emb: Target embeddings
 
         Returns:
+        -------
             Cosine similarity [-1,1] between aligned vectors,
             higher values indicate more similar usage between periods.
             Returns None if word not found in either vocabulary.
 
         Examples:
+        --------
             >>> import numpy as np
             >>> aligner = ProcustesAligner()
             >>> aligner.source_words = ['cat', 'dog']  # Set after initialization
@@ -247,6 +264,7 @@ class ProcustesAligner:
             >>> target_emb = np.array([[1., 0.], [0., 1.]])
             >>> round(aligner.get_word_similarity('cat', source_emb, target_emb), 2)
             1.0
+
         """
         try:
             source_idx = self.source_words.index(word)
@@ -275,12 +293,12 @@ class ProcustesAligner:
             "min_freq_rank": self.min_freq_rank,
             "max_freq_rank": self.max_freq_rank,
         }
-        with open(path, "wb") as f:
+        with Path.open(path, "wb") as f:
             pickle.dump(data, f)
 
     def load(self, path: Path) -> None:
         """Load the aligner state."""
-        with open(path, "rb") as f:
+        with Path.open(path, "rb") as f:
             data = pickle.load(f)
         self.orthogonal_matrix = data["orthogonal_matrix"]
         self.source_words = data["source_words"]

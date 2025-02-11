@@ -1,11 +1,9 @@
-"""
-SVD-based word embedding implementation with memory-efficient counting.
-"""
+"""SVD-based word embedding implementation with memory-efficient counting."""
 
 import pickle
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator, List, Optional, Union
 
 import numpy as np
 from nltk.util import skipgrams
@@ -19,12 +17,14 @@ from ..utils.probabilistic_counter import CountMinSketch
 class WordSimilarity:
     """Container for word similarity results.
 
-    Examples:
+    Examples
+    --------
         >>> sim = WordSimilarity("cat", 0.85)
         >>> sim.word
         'cat'
         >>> sim.similarity
         0.85
+
     """
 
     word: str
@@ -35,21 +35,23 @@ class WordSimilarity:
 class AnalogyResult:
     """Container for word analogy results.
 
-    Examples:
+    Examples
+    --------
         >>> result = AnalogyResult(["queen"], [0.76])
         >>> result.words
         ['queen']
         >>> result.similarities
         [0.76]
+
     """
 
-    words: List[str]
-    similarities: List[float]
+    words: list[str]
+    similarities: list[float]
 
 
 class SVDAlgebra:
-    """
-    Implements word vector algebra using SVD-based embeddings.
+    """Implements word vector algebra using SVD-based embeddings.
+
     Uses Count-Min Sketch for memory-efficient counting and
     Cython-optimized PPMI computation.
     """
@@ -62,15 +64,16 @@ class SVDAlgebra:
         cms_width: int = 1_000_000,
         cms_depth: int = 5,
     ):
-        """
-        Initialize SVDAlgebra.
+        """Initialize SVDAlgebra.
 
         Args:
+        ----
             n_components: Number of SVD components
             window_size: Window size for skipgrams
             min_word_length: Minimum word length to consider
             cms_width: Width of Count-Min Sketch tables
             cms_depth: Number of hash functions
+
         """
         self.n_components = n_components
         self.window_size = window_size
@@ -78,15 +81,18 @@ class SVDAlgebra:
         self.cms_width = cms_width
         self.cms_depth = cms_depth
 
-        self.vocabulary: List[str] = []
-        self.embeddings: Optional[np.ndarray] = None
+        self.vocabulary: list[str] = []
+        self.embeddings: np.ndarray | None = None
+        self.M_dense: np.ndarray | None = None
 
     def train(self, corpus: Generator[str, None, None]) -> None:
         """Train the model on a text corpus using Count-Min Sketch
             and Cython optimizations.
 
         Args:
+        ----
             corpus: Generator yielding text lines
+
         """
         # Initialize Count-Min Sketches
         word_counter = CountMinSketch(self.cms_width, self.cms_depth)
@@ -149,7 +155,7 @@ class SVDAlgebra:
 
         # Add small noise to avoid zero matrices
         M_dense += np.random.normal(0, 1e-10, M_dense.shape)
-
+        self.M_dense = M_dense
         # Perform SVD
         try:
             U, S, Vt = np.linalg.svd(M_dense, full_matrices=False)
@@ -182,45 +188,52 @@ class SVDAlgebra:
         del skipgram_counter
         del M
 
-    def save_model(self, path: Union[str, Path]) -> None:
-        """
-        Save model to disk.
+    def save_model(self, path: str | Path) -> None:
+        """Save model to disk.
 
         Args:
+        ----
             path: Directory to save model files
+
         """
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
+        np.save(path / "ppmi.npy", self.M_dense)  # make it optional in the future!
         np.save(path / "embeddings.npy", self.embeddings)
-        with open(path / "vocabulary.pkl", "wb") as f:
+        with Path.open(path / "vocabulary.pkl", "wb") as f:
             pickle.dump(self.vocabulary, f)
 
-    def load_model(self, path: Union[str, Path]) -> None:
-        """
-        Load model from disk.
+    def load_model(self, path: str | Path) -> None:
+        """Load model from disk.
 
         Args:
+        ----
             path: Directory containing model files
+
         """
         path = Path(path)
         if not path.is_dir():
             raise ValueError(f"Directory not found: {path}")
 
+        self.M_dense = np.load(path / "ppmi.npy")
         self.embeddings = np.load(path / "embeddings.npy")
-        with open(path / "vocabulary.pkl", "rb") as f:
+        with Path.open(path / "vocabulary.pkl", "rb") as f:
             self.vocabulary = pickle.load(f)
 
-    def get_vector(self, word: str) -> Optional[np.ndarray]:
+    def get_vector(self, word: str) -> np.ndarray | None:
         """Get the embedding vector for a word.
 
         Args:
+        ----
             word: Input word
 
         Returns:
+        -------
             Word vector if word is in vocabulary, None otherwise
 
         Examples:
+        --------
             >>> algebra = SVDAlgebra(n_components=2)
             >>> algebra.vocabulary = ["cat", "dog"]
             >>> algebra.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
@@ -228,6 +241,7 @@ class SVDAlgebra:
             array([1., 0.])
             >>> algebra.get_vector("unknown") is None
             True
+
         """
         if self.embeddings is None:
             return None
@@ -237,17 +251,20 @@ class SVDAlgebra:
         except ValueError:
             return None
 
-    def most_similar(self, word: str, n: int = 10) -> List[WordSimilarity]:
+    def most_similar(self, word: str, n: int = 10) -> list[WordSimilarity]:
         """Find the n most similar words.
 
         Args:
+        ----
             word: Query word
             n: Number of similar words to return
 
         Returns:
+        -------
             List of WordSimilarity objects sorted by similarity
 
         Examples:
+        --------
             >>> algebra = SVDAlgebra(n_components=2)
             >>> algebra.vocabulary = ["cat", "dog", "fish"]
             >>> algebra.embeddings = np.array([[1.0, 0.0], [0.8, 0.2], [0.0, 1.0]])
@@ -258,6 +275,7 @@ class SVDAlgebra:
             'dog'
             >>> round(results[0].similarity, 2)
             0.97
+
         """
         vector = self.get_vector(word)
         if vector is None:
@@ -297,17 +315,20 @@ class SVDAlgebra:
 
         return results
 
-    def distance(self, word1: str, word2: str) -> Optional[float]:
+    def distance(self, word1: str, word2: str) -> float | None:
         """Calculate cosine distance between two words.
 
         Args:
+        ----
             word1: First word
             word2: Second word
 
         Returns:
+        -------
             Cosine distance between word vectors, or None if either word is unknown
 
         Examples:
+        --------
             >>> algebra = SVDAlgebra(n_components=2)
             >>> algebra.vocabulary = ["cat", "dog"]
             >>> algebra.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
@@ -315,6 +336,7 @@ class SVDAlgebra:
             1.0
             >>> algebra.distance("cat", "unknown") is None
             True
+
         """
         vec1 = self.get_vector(word1)
         vec2 = self.get_vector(word2)
@@ -331,19 +353,21 @@ class SVDAlgebra:
         return min(cosine(vec1, vec2), 1.0)
 
     def analogy(
-        self, positive: List[str], negative: str, n: int = 3
-    ) -> Optional[AnalogyResult]:
-        """
-        Solve word analogies (e.g., king - man + woman ≈ queen).
+        self, positive: list[str], negative: str, n: int = 3
+    ) -> AnalogyResult | None:
+        """Solve word analogies (e.g., king - man + woman ≈ queen).
 
         Args:
+        ----
             positive: List of two positive words for the analogy
             negative: The negative word
             n: Number of results to return
 
         Returns:
+        -------
             AnalogyResult containing similar words and their similarity scores,
             or None if any of the input words are not in vocabulary
+
         """
         if len(positive) != 2:
             raise ValueError("Exactly two positive words are required")

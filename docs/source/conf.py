@@ -1,13 +1,15 @@
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.abspath("../../src"))
+
+file_path = str(Path("../../src").resolve())
+sys.path.insert(0, file_path)
 
 # Project information
 project = "chronowords"
 copyright = "2024, Crow Intelligence"
-author = "Crow Intelligence"
-release = "0.1.0"
+author = "Orsolya Putz, Zoltan Varju"
+release = "0.1.1"
 
 # General configuration
 extensions = [

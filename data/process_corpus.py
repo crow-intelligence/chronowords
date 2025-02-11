@@ -1,10 +1,12 @@
 import json
+from pathlib import Path
 
 import spacy
 
-nlp = spacy.load("en_core_web_sm")
 
-with open("data/speeches.json", "r") as file:
+nlp = spacy.load("en_core_web_sm")
+file_path = Path("data/speeches.json")
+with Path.open(file_path) as file:
     data = json.load(file)
 
 new_data = []
@@ -16,5 +18,8 @@ for speech in data:
     new_data.append(speech)
 
 # Save the lemmatized speeches
-with open("data/speeches_lemmatized.json", "w") as file:
+out_path = Path(
+    "data/speeches_lemmatized.json",
+)
+with Path.open(out_path, "w") as file:
     json.dump(new_data, file)

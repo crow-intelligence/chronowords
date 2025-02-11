@@ -1,5 +1,3 @@
-from typing import List, Tuple, Union
-
 import mmh3
 import numpy as np
 
@@ -11,22 +9,25 @@ class CountMinSketch:
     Memory usage: width * depth * 4 bytes
     Error bound: ≈ 2/width with probability 1 - 1/2^depth
 
-    Examples:
+    Examples
+    --------
         >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
         >>> cms.width
         1000
         >>> cms.depth
         5
+
     """
 
     def __init__(self, width: int = 1_000_000, depth: int = 5, seed: int = 42):
-        """
-        Initialize Count-Min Sketch.
+        """Initialize Count-Min Sketch.
 
         Args:
+        ----
             width: Number of counters per hash function (controls accuracy)
             depth: Number of hash functions (controls probability bound)
             seed: Random seed for hash function initialization
+
         """
         self.width = width
         self.depth = depth
@@ -43,14 +44,16 @@ class CountMinSketch:
         # Keep track of all observed keys
         self._observed_keys: set[str] = set()
 
-    def update(self, key: Union[str, bytes], count: int = 1) -> None:
+    def update(self, key: str | bytes, count: int = 1) -> None:
         """Update count for a key.
 
         Args:
+        ----
             key: Item to count (string or bytes)
             count: Amount to increment (default: 1)
 
         Examples:
+        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms.update("apple")
             >>> cms.update("apple")
@@ -61,6 +64,7 @@ class CountMinSketch:
             5
             >>> cms.total
             7
+
         """
         if isinstance(key, str):
             key = key.encode()
@@ -76,16 +80,18 @@ class CountMinSketch:
             idx = mmh3.hash(key, seed) % self.width
             self.counts[i, idx] += count
 
-    def query(self, key: Union[str, bytes]) -> int:
+    def query(self, key: str | bytes) -> int:
         """Query count for a key.
 
-        Examples:
+        Examples
+        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms.update("rare_word")
             >>> cms.query("rare_word")
             1
             >>> cms.query("unseen_word")
             0
+
         """
         if isinstance(key, str):
             key = key.encode()
@@ -98,16 +104,19 @@ class CountMinSketch:
 
         return int(min_count)
 
-    def get_heavy_hitters(self, threshold: float) -> List[Tuple[str, int]]:
+    def get_heavy_hitters(self, threshold: float) -> list[tuple[str, int]]:
         """Get items that appear more than threshold * total times.
 
         Args:
+        ----
             threshold: Minimum frequency as fraction of total counts
 
         Returns:
+        -------
             List of (item, count) pairs sorted by count descending
 
         Examples:
+        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> # Add a frequent word
             >>> for _ in range(100):
@@ -120,6 +129,7 @@ class CountMinSketch:
             True
             >>> "frequent" == heavy[0][0]  # Most frequent word
             True
+
         """
         threshold_count = int(self.total * threshold)
         candidates = {}
@@ -136,7 +146,8 @@ class CountMinSketch:
     def merge(self, other: "CountMinSketch") -> None:
         """Merge another sketch into this one.
 
-        Examples:
+        Examples
+        --------
             >>> cms1 = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms2 = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms1.update("word", count=3)
@@ -152,6 +163,7 @@ class CountMinSketch:
             >>> cms1.merge(cms3)  # doctest: +IGNORE_EXCEPTION_DETAIL
             Traceback (most recent call last):
             ValueError: Can only merge compatible sketches
+
         """
         if (
             self.width != other.width
@@ -168,12 +180,15 @@ class CountMinSketch:
         """Estimate maximum counting error.
 
         Args:
+        ----
             confidence: Confidence level for the error bound
 
         Returns:
+        -------
             Maximum expected counting error at given confidence level
 
         Examples:
+        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> for _ in range(1000):
             ...     cms.update("word")
@@ -182,6 +197,7 @@ class CountMinSketch:
             True
             >>> error < cms.total  # Error should be less than total counts
             True
+
         """
         epsilon = 2.0 / self.width
         delta = pow(2.0, -self.depth)
@@ -192,10 +208,11 @@ class CountMinSketch:
         return epsilon * self.total
 
     @property
-    def arrays(self) -> Tuple[np.ndarray, List[int], int]:
+    def arrays(self) -> tuple[np.ndarray, list[int], int]:
         """Get raw arrays and parameters for Cython code.
 
-        Examples:
+        Examples
+        --------
             >>> cms = CountMinSketch(width=3, depth=2, seed=42)
             >>> counts, seeds, width = cms.arrays
             >>> counts.shape
@@ -204,5 +221,6 @@ class CountMinSketch:
             True
             >>> width
             3
+
         """
         return self.counts, self.seeds, self.width

@@ -1,7 +1,10 @@
 import sys
 
 from Cython.Build import cythonize
-from setuptools import Extension, find_namespace_packages, setup
+from setuptools import Extension
+from setuptools import find_namespace_packages
+from setuptools import setup
+
 
 try:
     import numpy as np
