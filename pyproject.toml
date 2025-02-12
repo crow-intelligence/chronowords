@@ -54,6 +54,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = ["examples/*.ipynb"]
 
 [tool.ruff.lint]
 select = [
