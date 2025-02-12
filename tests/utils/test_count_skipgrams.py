@@ -27,13 +27,24 @@ def toy_corpus_data():
 
 
 @pytest.fixture
-def ppmi_computer(toy_corpus_data):
+def ppmi_computer():
     """Create a PPMIComputer instance with toy corpus data."""
-    # Unpack the toy corpus data
-    skipgram_counts, word_counts, vocabulary, seeds = toy_corpus_data
+    # Ensure arrays are np.int32
+    skipgram_counts = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
+    word_counts = np.array([1, 1, 1], dtype=np.int32)
+    seeds = [12345, 67890, 11111]  # Integer seeds are fine
 
-    # Initialize the PPMIComputer
-    return PPMIComputer(skipgram_counts, word_counts, vocabulary, seeds, 5, 20, 20)
+    return PPMIComputer(
+        skipgram_counts=skipgram_counts,
+        word_counts=word_counts,
+        vocabulary=["word1", "word2", "word3"],
+        seeds=seeds,
+        width=10,
+        skip_total=6.0,
+        word_total=3.0,
+        shift=1.0,
+        alpha=0.75,
+    )
 
 
 def test_ppmi_matrix_positive_values(ppmi_computer):

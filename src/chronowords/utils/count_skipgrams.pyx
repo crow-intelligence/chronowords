@@ -54,7 +54,13 @@ cdef class PPMIComputer:
         self.skipgram_counts = skipgram_counts
         self.word_counts = word_counts
         self.vocabulary = vocabulary
-        self.seeds = seeds if seeds is not None else [1, 2, 3]
+        # Validate seeds are integers
+        if seeds is None:
+            self.seeds = [1, 2, 3]
+        else:
+            if not all(isinstance(s, int) for s in seeds):
+                raise ValueError("All seeds must be integers")
+            self.seeds = seeds
         self.width = width
         self.skip_total = skip_total
         self.word_total = word_total
