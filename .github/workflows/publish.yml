@@ -32,7 +32,7 @@ jobs:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: |
           poetry build
-          poetry publish
+          poetry publish -vvv  # Add verbose logging
 
       - name: Trigger RTD build
         run: |
