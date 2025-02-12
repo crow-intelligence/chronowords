@@ -1,25 +1,37 @@
-name: Publish to PyPI
+name: Publish
 
 on:
   release:
     types: [published]
 
 jobs:
-  build-and-publish:
+  publish:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-    - name: Install Poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-    - name: Configure Poetry
-      run: |
-        poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
-    - name: Build and publish
-      run: |
-        poetry build
-        poetry publish
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"  # Match your RTD version
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Configure Poetry
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          poetry install --with docs
+
+      - name: Build and publish
+        run: |
+          poetry build
+          poetry publish
+
+      - name: Trigger RTD build
+        run: |
+          curl -X POST -d "branches=main" -d "token=${{ secrets.RTD_WEBHOOK_TOKEN }}" https://readthedocs.org/api/v2/webhook/chronowords/0/

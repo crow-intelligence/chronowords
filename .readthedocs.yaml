@@ -4,6 +4,8 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
+    # Add poetry installation
+    python_requirements: docs/requirements.txt
 
 sphinx:
   configuration: docs/source/conf.py
@@ -14,4 +16,7 @@ python:
       path: .
       extra_requirements:
         - docs
-    - requirements: docs/requirements.txt
+
+formats:
+  - pdf
+  - epub
