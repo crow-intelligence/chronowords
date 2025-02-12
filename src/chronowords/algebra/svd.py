@@ -187,13 +187,13 @@ class SVDAlgebra:
         self.M_dense = M_dense
 
         try:
-            U, S, Vt = np.linalg.svd(
+            U, S, Vt = np.linalg.svd(  # type: ignore
                 M_dense,
                 full_matrices=False,
                 compute_uv=True,
             )
         except np.linalg.LinAlgError:
-            U, S, Vt = np.linalg.svd(
+            U, S, Vt = np.linalg.svd(  # type: ignore
                 M_dense,
                 full_matrices=False,
                 compute_uv=True,
