@@ -10,29 +10,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"  # Match your RTD version
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-
-      - name: Configure Poetry
-        run: |
-          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          poetry install --with docs
+        run: uv sync --group docs
 
       - name: Build and publish
-        env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: |
-          poetry build
-          poetry publish -vvv  # Add verbose logging
+          uv build
+          uv publish --token ${{ secrets.PYPI_TOKEN }}
 
       - name: Trigger RTD build
         run: |

@@ -19,7 +19,13 @@ class CountMinSketch:
 
     """
 
-    def __init__(self, width: int = 1_000_000, depth: int = 5, seed: int = 42):
+    def __init__(
+        self,
+        width: int = 1_000_000,
+        depth: int = 5,
+        seed: int = 42,
+        track_keys: bool = True,
+    ):
         """Initialize Count-Min Sketch.
 
         Args:
@@ -27,22 +33,29 @@ class CountMinSketch:
             width: Number of counters per hash function (controls accuracy)
             depth: Number of hash functions (controls probability bound)
             seed: Random seed for hash function initialization
+            track_keys: Whether to track observed keys (disable for memory savings)
 
         """
         self.width = width
         self.depth = depth
         self.seed = seed
         self.total: int = 0
+        self._track_keys = track_keys
 
-        # Initialize counting array
         self.counts = np.zeros((depth, width), dtype=np.int32)
 
-        # Generate hash function seeds
         rng = np.random.RandomState(seed)
         self.seeds = [int(s) for s in rng.randint(0, 1_000_000, size=depth)]
 
-        # Keep track of all observed keys
         self._observed_keys: set[str] = set()
+        self._row_indices = np.arange(self.depth)
+
+    def _hash_indices(self, key: bytes) -> np.ndarray:
+        """Compute hash indices for all rows at once."""
+        return np.array(
+            [mmh3.hash(key, seed) % self.width for seed in self.seeds],
+            dtype=np.intp,
+        )
 
     def update(self, key: str | bytes, count: int = 1) -> None:
         """Update count for a key.
@@ -67,18 +80,18 @@ class CountMinSketch:
 
         """
         if isinstance(key, str):
-            key = key.encode()
-            # Store original string key
-            self._observed_keys.add(key.decode())
+            key_bytes = key.encode()
+            if self._track_keys:
+                self._observed_keys.add(key)
         else:
-            self._observed_keys.add(key.decode())
+            key_bytes = key
+            if self._track_keys:
+                self._observed_keys.add(key.decode())
 
         self.total += count
 
-        # Update each row
-        for i, seed in enumerate(self.seeds):
-            idx = mmh3.hash(key, seed) % self.width
-            self.counts[i, idx] += count
+        indices = self._hash_indices(key_bytes)
+        self.counts[self._row_indices, indices] += count
 
     def query(self, key: str | bytes) -> int:
         """Query count for a key.
@@ -96,13 +109,8 @@ class CountMinSketch:
         if isinstance(key, str):
             key = key.encode()
 
-        # Return minimum count across all hash functions
-        min_count = float("inf")
-        for i, seed in enumerate(self.seeds):
-            idx = mmh3.hash(key, seed) % self.width
-            min_count = min(min_count, self.counts[i, idx])
-
-        return int(min_count)
+        indices = self._hash_indices(key)
+        return int(np.min(self.counts[self._row_indices, indices]))
 
     def get_heavy_hitters(self, threshold: float) -> list[tuple[str, int]]:
         """Get items that appear more than threshold * total times.
@@ -114,6 +122,10 @@ class CountMinSketch:
         Returns:
         -------
             List of (item, count) pairs sorted by count descending
+
+        Raises:
+        ------
+            RuntimeError: If track_keys was disabled
 
         Examples:
         --------
@@ -131,16 +143,19 @@ class CountMinSketch:
             True
 
         """
+        if not self._track_keys:
+            raise RuntimeError(
+                "Cannot get heavy hitters when track_keys=False"
+            )
+
         threshold_count = int(self.total * threshold)
         candidates = {}
 
-        # Check counts for all observed keys
         for key in self._observed_keys:
             count = self.query(key)
             if count > threshold_count:
                 candidates[key] = count
 
-        # Sort by count in descending order
         return sorted(candidates.items(), key=lambda x: x[1], reverse=True)
 
     def merge(self, other: "CountMinSketch") -> None:

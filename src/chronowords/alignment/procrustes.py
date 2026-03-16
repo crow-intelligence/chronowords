@@ -34,14 +34,14 @@ class AlignmentMetrics:
     alignment_error: float
 
 
-class ProcustesAligner:
+class ProcrustesAligner:
     """Aligns word embeddings from different time periods using Procrustes analysis.
 
     Finds optimal orthogonal transformation to align embeddings while preserving distances.
 
     Example:
     -------
-        aligner = ProcustesAligner()
+        aligner = ProcrustesAligner()
         metrics = aligner.fit(
             embeddings_1800, embeddings_1850,
             vocab_1800, vocab_1850
@@ -62,7 +62,7 @@ class ProcustesAligner:
 
         Examples:
         --------
-            >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=10)
+            >>> aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=10)
             >>> aligner.min_freq_rank
             0
             >>> aligner.max_freq_rank
@@ -90,7 +90,7 @@ class ProcustesAligner:
 
         Examples
         --------
-            >>> aligner = ProcustesAligner(min_freq_rank=0, max_freq_rank=2)
+            >>> aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=2)
             >>> source = ['the', 'in', 'a', 'rare']
             >>> target = ['in', 'the', 'new', 'a']
             >>> aligner.find_common_words(source, target)
@@ -127,7 +127,7 @@ class ProcustesAligner:
         Examples:
         --------
             >>> import numpy as np
-            >>> aligner = ProcustesAligner()
+            >>> aligner = ProcrustesAligner()
             >>> source_emb = np.array([[1., 0.], [0., 1.]])
             >>> target_emb = np.array([[0., 1.], [-1., 0.]])  # 90 degree rotation
             >>> vocab = ['word1', 'word2']
@@ -153,26 +153,28 @@ class ProcustesAligner:
         source_vectors = []
         target_vectors = []
 
+        source_idx_map = {w: i for i, w in enumerate(source_vocab)}
+        target_idx_map = {w: i for i, w in enumerate(target_vocab)}
+
         for word in anchor_words:
-            try:
-                source_idx = source_vocab.index(word)
-                target_idx = target_vocab.index(word)
+            source_idx = source_idx_map.get(word)
+            target_idx = target_idx_map.get(word)
 
-                # Get vectors
-                source_vec = source_embeddings[source_idx]
-                target_vec = target_embeddings[target_idx]
-
-                # Check for zero vectors
-                if np.all(np.abs(source_vec) < 1e-10) or np.all(
-                    np.abs(target_vec) < 1e-10
-                ):
-                    continue
-
-                self.anchors[word] = (source_idx, target_idx)
-                source_vectors.append(source_vec)
-                target_vectors.append(target_vec)
-            except ValueError:
+            if source_idx is None or target_idx is None:
                 continue
+
+            source_vec = source_embeddings[source_idx]
+            target_vec = target_embeddings[target_idx]
+
+            # Check for zero vectors
+            if np.all(np.abs(source_vec) < 1e-10) or np.all(
+                np.abs(target_vec) < 1e-10
+            ):
+                continue
+
+            self.anchors[word] = (source_idx, target_idx)
+            source_vectors.append(source_vec)
+            target_vectors.append(target_vec)
 
         if not self.anchors:
             raise ValueError("No valid anchor words found")
@@ -223,7 +225,7 @@ class ProcustesAligner:
         Examples:
         --------
             >>> import numpy as np
-            >>> aligner = ProcustesAligner()
+            >>> aligner = ProcrustesAligner()
             >>> # No need to set source_words/target_words since we're just testing transform
             >>> aligner.orthogonal_matrix = np.array([[0, 1], [-1, 0]])  # 90 degree rotation
             >>> embeddings = np.array([[1, 0], [0, 1]])
@@ -256,7 +258,7 @@ class ProcustesAligner:
         Examples:
         --------
             >>> import numpy as np
-            >>> aligner = ProcustesAligner()
+            >>> aligner = ProcrustesAligner()
             >>> aligner.source_words = ['cat', 'dog']  # Set after initialization
             >>> aligner.target_words = ['cat', 'dog']  # Set after initialization
             >>> aligner.orthogonal_matrix = np.eye(2)

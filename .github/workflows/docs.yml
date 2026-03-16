@@ -15,20 +15,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
+        run: uv python install 3.10
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
+        run: uv sync --group docs
 
       - name: Build documentation
         run: |
           cd docs
-          make html
+          uv run make html
 
       - name: Upload documentation
         if: success()

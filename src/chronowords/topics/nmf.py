@@ -355,14 +355,32 @@ class TopicModel:
         if not self.topics or not other.topics:
             raise ValueError("Both models must be fit before alignment")
 
-        # Compute cost matrix using aligned vocabularies
+        # Pre-compute unified vocabulary mappings once
+        unified_vocab = sorted(set(self.vocabulary) | set(other.vocabulary))
+        vocab1_idx = {word: idx for idx, word in enumerate(self.vocabulary)}
+        vocab2_idx = {word: idx for idx, word in enumerate(other.vocabulary)}
+        unified_size = len(unified_vocab)
+        word_to_unified = {word: idx for idx, word in enumerate(unified_vocab)}
+
+        # Compute cost matrix using pre-computed mappings
         cost_matrix = np.zeros((self.n_topics, other.n_topics))
         for i, topic1 in enumerate(self.topics):
             for j, topic2 in enumerate(other.topics):
-                dist1_aligned, dist2_aligned = self._align_distributions(
-                    topic1, topic2, self.vocabulary, other.vocabulary
-                )
-                similarity = 1 - cosine(dist1_aligned, dist2_aligned)
+                dist1 = np.zeros(unified_size)
+                dist2 = np.zeros(unified_size)
+
+                for word, uidx in word_to_unified.items():
+                    if word in vocab1_idx:
+                        dist1[uidx] = topic1.distribution[vocab1_idx[word]]
+                    if word in vocab2_idx:
+                        dist2[uidx] = topic2.distribution[vocab2_idx[word]]
+
+                if dist1.sum() > 0:
+                    dist1 /= dist1.sum()
+                if dist2.sum() > 0:
+                    dist2 /= dist2.sum()
+
+                similarity = 1 - cosine(dist1, dist2)
                 cost_matrix[i, j] = 1 - similarity
 
         # Find optimal matching

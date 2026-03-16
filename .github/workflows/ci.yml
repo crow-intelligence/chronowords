@@ -15,20 +15,23 @@ jobs:
 
    steps:
    - uses: actions/checkout@v4
-   - uses: actions/setup-python@v5
-     with:
-       python-version: ${{ matrix.python-version }}
-   - name: Install Poetry & dependencies
-     run: |
-         curl -sSL https://install.python-poetry.org | python3 -
-         python -m pip install Cython numpy
-         poetry install
+
+   - name: Install uv
+     uses: astral-sh/setup-uv@v5
+
+   - name: Set up Python ${{ matrix.python-version }}
+     run: uv python install ${{ matrix.python-version }}
+
+   - name: Install dependencies
+     run: uv sync --group dev --group docs
+
    - name: Run tests
-     run: poetry run pytest
+     run: uv run pytest
+
    - name: Build documentation
      run: |
        cd docs
-       poetry run make html
+       uv run make html
 
  deploy:
    needs: test
@@ -37,18 +40,17 @@ jobs:
 
    steps:
    - uses: actions/checkout@v4
-   - name: Setup Python and Poetry
-     uses: actions/setup-python@v5
-     with:
-       python-version: "3.12"
-   - name: Install Poetry and dependencies
-     run: |
-       curl -sSL https://install.python-poetry.org | python3 -
-       python -m pip install Cython numpy
-       poetry install
+
+   - name: Install uv
+     uses: astral-sh/setup-uv@v5
+
+   - name: Set up Python
+     run: uv python install 3.12
+
+   - name: Install dependencies
+     run: uv sync --group dev
+
    - name: Build and publish
-     env:
-       POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
      run: |
-       poetry build
-       poetry publish
+       uv build
+       uv publish --token ${{ secrets.PYPI_TOKEN }}
