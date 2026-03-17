@@ -125,7 +125,7 @@ class SVDAlgebra:
         self.embeddings: NDArray[np.float64] | None = None
         self._ppmi_sparse: csr_matrix | None = None
         # Keep M_dense for backward compatibility with notebook code
-        self.M_dense: NDArray[np.float64] | None = None
+        self.M_dense: np.ndarray | None = None
 
     def _build_vocab_index(self) -> None:
         """Build dict index for O(1) vocabulary lookups."""

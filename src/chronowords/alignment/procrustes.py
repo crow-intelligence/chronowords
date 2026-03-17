@@ -167,9 +167,7 @@ class ProcrustesAligner:
             target_vec = target_embeddings[target_idx]
 
             # Check for zero vectors
-            if np.all(np.abs(source_vec) < 1e-10) or np.all(
-                np.abs(target_vec) < 1e-10
-            ):
+            if np.all(np.abs(source_vec) < 1e-10) or np.all(np.abs(target_vec) < 1e-10):
                 continue
 
             self.anchors[word] = (source_idx, target_idx)

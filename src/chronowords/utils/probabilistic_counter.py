@@ -144,9 +144,7 @@ class CountMinSketch:
 
         """
         if not self._track_keys:
-            raise RuntimeError(
-                "Cannot get heavy hitters when track_keys=False"
-            )
+            raise RuntimeError("Cannot get heavy hitters when track_keys=False")
 
         threshold_count = int(self.total * threshold)
         candidates = {}
