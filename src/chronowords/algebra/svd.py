@@ -209,7 +209,7 @@ class SVDAlgebra:
 
         # svds returns singular values in ascending order; reverse them
         idx = np.argsort(S)[::-1]
-        U = U[:, idx].astype(np.float64)
+        U = U[:, idx].astype(np.float64)  # type: ignore[assignment]
         S = S[idx].astype(np.float64)
 
         self.embeddings = (U * np.sqrt(S)).astype(np.float64)
