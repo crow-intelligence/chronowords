@@ -1,3 +1,8 @@
+.. image:: ../../img/chronowords.svg
+   :alt: chronowords
+   :align: center
+   :width: 450px
+
 Welcome to chronowords's documentation!
 =====================================
 

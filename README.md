@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/crow-intelligence/chronowords/main/img/chronowords.svg" alt="chronowords" width="450"/>
+</p>
+
 # chronowords
 
 Detect semantic shifts over time in word embeddings. Train small PPMI-based language models, create topic models using NMF, and analyze semantic changes using Procrustes alignment.

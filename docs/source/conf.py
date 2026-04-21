@@ -30,6 +30,7 @@ exclude_patterns: list[str] = []
 # HTML output options
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+html_logo = "../../img/chronowords.svg"
 
 # Napoleon settings
 napoleon_google_docstring = True
