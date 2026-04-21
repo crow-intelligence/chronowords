@@ -21,9 +21,5 @@ jobs:
 
       - name: Build and publish
         run: |
-          uv build
+          uv build --sdist
           uv publish --token ${{ secrets.PYPI_TOKEN }}
-
-      - name: Trigger RTD build
-        run: |
-          curl -X POST -d "branches=main" -d "token=${{ secrets.RTD_WEBHOOK_TOKEN }}" https://readthedocs.org/api/v2/webhook/chronowords/0/
