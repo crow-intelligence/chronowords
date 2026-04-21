@@ -2,6 +2,11 @@
   <img src="https://raw.githubusercontent.com/crow-intelligence/chronowords/main/img/chronowords.svg" alt="chronowords" width="450"/>
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/chronowords/"><img src="https://img.shields.io/pypi/v/chronowords.svg" alt="PyPI"></a>
+  <a href="https://chronowords.readthedocs.io/en/latest/"><img src="https://img.shields.io/readthedocs/chronowords" alt="Docs"></a>
+</p>
+
 # chronowords
 
 Detect semantic shifts over time in word embeddings. Train small PPMI-based language models, create topic models using NMF, and analyze semantic changes using Procrustes alignment.
@@ -38,8 +43,9 @@ topic_model = TopicModel(n_topics=10)
 topic_model.fit(ppmi_matrix, vocabulary)
 ```
 
-## Documentation
-Full documentation available at ReadTheDocs.
+## Links
+- Documentation: <https://chronowords.readthedocs.io/en/latest/>
+- PyPI: <https://pypi.org/project/chronowords/>
 
 ## Requirements
 

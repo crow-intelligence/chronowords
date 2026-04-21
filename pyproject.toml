@@ -23,7 +23,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/crow-intelligence/chronowords"
 Repository = "https://github.com/crow-intelligence/chronowords"
-Documentation = "https://chronowords.readthedocs.io"
+Documentation = "https://chronowords.readthedocs.io/en/latest/"
 Organization = "https://crowintelligence.org/"
 
 [dependency-groups]
