@@ -24,6 +24,7 @@ dependencies = [
 Homepage = "https://github.com/crow-intelligence/chronowords"
 Repository = "https://github.com/crow-intelligence/chronowords"
 Documentation = "https://chronowords.readthedocs.io"
+Organization = "https://crowintelligence.org/"
 
 [dependency-groups]
 dev = [

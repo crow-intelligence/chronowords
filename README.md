@@ -54,3 +54,6 @@ Pull requests welcome. For major changes, open an issue first.
 
 ## License
 MIT
+
+## Made by
+Built and maintained by [Crow Intelligence](https://crowintelligence.org/).
