@@ -14,7 +14,7 @@ from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
-from ..utils.count_skipgrams import PPMIComputer
+from ..utils.count_skipgrams import PPMIComputer  # ty: ignore
 from ..utils.probabilistic_counter import CountMinSketch
 
 
@@ -209,7 +209,7 @@ class SVDAlgebra:
 
         # svds returns singular values in ascending order; reverse them
         idx = np.argsort(S)[::-1]
-        U = U[:, idx].astype(np.float64)  # type: ignore[assignment]
+        U = U[:, idx].astype(np.float64)
         S = S[idx].astype(np.float64)
 
         self.embeddings = (U * np.sqrt(S)).astype(np.float64)
@@ -453,20 +453,16 @@ class SVDAlgebra:
         if len(positive) != 2 or self.embeddings is None:
             return None
 
-        vectors: list[NDArray[np.float64] | None] = []
+        vectors: list[NDArray[np.float64]] = []
         for word in positive + [negative]:
             vec = self.get_vector(word)
             if vec is None:
                 return None
             vectors.append(vec)
 
-        vec1 = vectors[0]
-        vec2 = vectors[1]
-        vec3 = vectors[2]
-        if any(v is None for v in [vec1, vec2, vec3]):
-            return None
+        vec1, vec2, vec3 = vectors[0], vectors[1], vectors[2]
 
-        target = vec3 - vec1 + vec2  # type: ignore
+        target = vec3 - vec1 + vec2
         target_norm = float(np.linalg.norm(target))
         if target_norm < 1e-10:
             return None

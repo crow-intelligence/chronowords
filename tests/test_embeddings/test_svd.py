@@ -1,9 +1,12 @@
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import settings
+from hypothesis import strategies as st
 from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
-from chronowords.utils.count_skipgrams import PPMIComputer
+from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
 
 
 def test_ppmi_computation():
@@ -104,6 +107,8 @@ def test_model_persistence(tmp_path, small_corpus):
     loaded_model.load_model(save_path)
 
     assert model.vocabulary == loaded_model.vocabulary
+    assert model.embeddings is not None
+    assert loaded_model.embeddings is not None
     np.testing.assert_array_almost_equal(model.embeddings, loaded_model.embeddings)
 
 
@@ -204,3 +209,79 @@ def test_most_similar_empty():
     model._build_vocab_index()
     model.embeddings = np.array([[1.0, 0.0]])
     assert model.most_similar("unknown") == []
+
+
+@pytest.fixture(scope="module")
+def trained_model():
+    """Train a small SVDAlgebra once for property-based tests."""
+    corpus = [
+        "king queen crown palace royal throne",
+        "king rules kingdom palace throne",
+        "queen rules kingdom crown royal",
+        "prince princess royal palace crown",
+        "man woman child family home",
+        "boy girl child plays home",
+        "father mother parent child family",
+        "king leads army battle victory",
+        "queen commands navy battle victory",
+    ]
+    model = SVDAlgebra(n_components=5, cms_width=100, cms_depth=3, min_word_length=2)
+    model.train(line for line in corpus)
+    return model
+
+
+@given(data=st.data())
+@settings(deadline=None, max_examples=50)
+def test_distance_is_symmetric(trained_model, data):
+    """Cosine distance must be symmetric: distance(a, b) == distance(b, a).
+
+    Asymmetry would break the metric assumptions underlying `most_similar`
+    and `analogy`, since both rely on distance being a well-defined relation
+    between pairs rather than an ordered operation.
+    """
+    vocab = trained_model.vocabulary
+    assume_nonempty = len(vocab) >= 2
+    if not assume_nonempty:
+        return
+    word1 = data.draw(st.sampled_from(vocab))
+    word2 = data.draw(st.sampled_from(vocab))
+
+    d12 = trained_model.distance(word1, word2)
+    d21 = trained_model.distance(word2, word1)
+
+    if d12 is None or d21 is None:
+        assert d12 is None and d21 is None
+    else:
+        assert abs(d12 - d21) < 1e-9
+
+
+@given(data=st.data(), n=st.integers(min_value=1, max_value=20))
+@settings(deadline=None, max_examples=50)
+def test_most_similar_output_contract(trained_model, data, n):
+    """`most_similar(word, n)` must honor its documented output contract.
+
+    For any vocab word with a non-zero embedding the returned list must
+    (i) have at most `n` entries, (ii) only contain distinct vocabulary
+    words other than the query, (iii) carry similarities in [-1, 1],
+    and (iv) be sorted by similarity descending. These invariants are what
+    downstream callers (analogy, temporal diff tooling) rely on.
+    """
+    vocab = trained_model.vocabulary
+    if len(vocab) < 2:
+        return
+    word = data.draw(st.sampled_from(vocab))
+
+    results = trained_model.most_similar(word, n=n)
+
+    assert len(results) <= n
+    vocab_set = set(vocab)
+    seen: set[str] = set()
+    for item in results:
+        assert item.word in vocab_set
+        assert item.word != word
+        assert item.word not in seen
+        seen.add(item.word)
+        assert -1.0 <= item.similarity <= 1.0
+
+    sims = [item.similarity for item in results]
+    assert sims == sorted(sims, reverse=True)

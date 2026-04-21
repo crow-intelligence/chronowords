@@ -2,6 +2,10 @@
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck
+from hypothesis import given
+from hypothesis import settings
+from hypothesis import strategies as st
 from scipy.sparse import csr_matrix
 
 from chronowords.topics.nmf import TopicModel
@@ -114,3 +118,68 @@ def test_alignment_different_vocabularies():
 
     aligned = model1.align_with(model2)
     assert len(aligned) > 0
+
+
+@given(n_topics=st.integers(min_value=2, max_value=5))
+@settings(
+    deadline=None,
+    max_examples=10,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+def test_topic_distributions_are_probability_distributions(simple_ppmi, n_topics):
+    """After fit, each topic's `distribution` must be a valid probability vector.
+
+    All entries must be non-negative, and the vector must sum to ~1. Downstream
+    code (alignment, document-topic assignment) treats these distributions as
+    probabilities; a violation breaks every consumer of the `Topic` object.
+    """
+    ppmi_matrix, vocabulary = simple_ppmi
+
+    model = TopicModel(n_topics=n_topics)
+    model.fit(ppmi_matrix, vocabulary)
+
+    for topic in model.topics:
+        assert np.all(topic.distribution >= 0)
+        assert abs(float(np.sum(topic.distribution)) - 1.0) < 1e-6
+
+
+@given(
+    n_topics=st.integers(min_value=1, max_value=4),
+    top_n_words=st.integers(min_value=1, max_value=5),
+)
+@settings(
+    deadline=None,
+    max_examples=15,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+def test_topic_top_words_match_distribution(simple_ppmi, n_topics, top_n_words):
+    """`topic.words` must be consistent with `topic.distribution`.
+
+    `fit` stores the `top_n_words` highest-weighted entries of the topic's
+    distribution as `(vocab[idx], weight)` pairs in descending weight order.
+    If these two views ever disagree — wrong indices, wrong order, or stale
+    weights — any UI that calls `print_topics` or any consumer that picks
+    `topic.words[0]` as "the topic's theme" will silently lie.
+    """
+    ppmi_matrix, vocabulary = simple_ppmi
+
+    model = TopicModel(n_topics=n_topics)
+    model.fit(ppmi_matrix, vocabulary, top_n_words=top_n_words)
+
+    for topic in model.topics:
+        assert len(topic.words) == min(top_n_words, len(vocabulary))
+
+        weights = [w for _, w in topic.words]
+        assert weights == sorted(weights, reverse=True)
+
+        word_to_idx = {w: i for i, w in enumerate(vocabulary)}
+        for word, stored_weight in topic.words:
+            assert word in word_to_idx
+            expected = float(topic.distribution[word_to_idx[word]])
+            assert abs(stored_weight - expected) < 1e-9
+
+        top_indices_expected = set(
+            np.argsort(topic.distribution)[-len(topic.words) :].tolist()
+        )
+        top_indices_actual = {word_to_idx[w] for w, _ in topic.words}
+        assert top_indices_actual == top_indices_expected

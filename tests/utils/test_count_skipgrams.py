@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from chronowords.utils.count_skipgrams import PPMIComputer
+from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
 
 
 @pytest.fixture

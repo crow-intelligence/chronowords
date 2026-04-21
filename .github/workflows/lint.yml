@@ -22,7 +22,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run type checking
-        run: uv run mypy src/
+        run: uv run ty check src tests
 
       - name: Run ruff
         run: uv run ruff check --output-format=github .

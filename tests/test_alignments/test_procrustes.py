@@ -5,6 +5,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import settings
+from hypothesis import strategies as st
+from hypothesis.extra import numpy as hynp
 
 from chronowords.alignment.procrustes import ProcrustesAligner
 
@@ -61,7 +65,9 @@ def test_zero_vector_handling():
     source_emb = np.array([[1.0, 1.0], [1.0, -1.0], [0.0, 0.0]])
 
     aligner = ProcrustesAligner()
-    metrics = aligner.fit(source_emb, source_emb.copy(), source_vocab, source_vocab.copy())
+    metrics = aligner.fit(
+        source_emb, source_emb.copy(), source_vocab, source_vocab.copy()
+    )
 
     assert metrics.num_aligned_words == 2
 
@@ -95,6 +101,8 @@ def test_save_load():
         new_aligner = ProcrustesAligner()
         new_aligner.load(path)
 
+        assert aligner.orthogonal_matrix is not None
+        assert new_aligner.orthogonal_matrix is not None
         assert np.allclose(aligner.orthogonal_matrix, new_aligner.orthogonal_matrix)
         assert aligner.source_words == new_aligner.source_words
         assert aligner.target_words == new_aligner.target_words
@@ -144,3 +152,59 @@ def test_get_word_similarity_unknown():
 
     emb = np.array([[1.0, 0.0]])
     assert aligner.get_word_similarity("unknown", emb, emb) is None
+
+
+@st.composite
+def _embedding_pair_with_shared_vocab(draw):
+    """Draw (source_emb, target_emb, vocab) where target = source @ random_orthogonal."""
+    n = draw(st.integers(min_value=5, max_value=20))
+    d = draw(st.integers(min_value=2, max_value=10))
+    source = draw(
+        hynp.arrays(
+            dtype=np.float64,
+            shape=(n, d),
+            elements=st.floats(
+                min_value=-10.0, max_value=10.0, allow_nan=False, allow_infinity=False
+            ),
+        )
+    )
+    # Require non-trivial rows so normalization doesn't collapse anchors.
+    row_norms = np.linalg.norm(source, axis=1)
+    assume_nonzero = np.all(row_norms > 1e-3)
+    if not assume_nonzero:
+        source = source + 0.5
+    # Random orthogonal target via QR decomposition of a random matrix.
+    q, _ = np.linalg.qr(
+        draw(
+            hynp.arrays(
+                dtype=np.float64,
+                shape=(d, d),
+                elements=st.floats(
+                    min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False
+                ),
+            )
+        )
+        + np.eye(d)
+    )
+    target = source @ q
+    vocab = [f"w{i}" for i in range(n)]
+    return source, target, vocab
+
+
+@given(data=_embedding_pair_with_shared_vocab())
+@settings(deadline=None, max_examples=30)
+def test_learned_matrix_is_orthogonal(data):
+    """Procrustes' defining guarantee: the learned transform is orthogonal.
+
+    For any paired embeddings with shared vocabulary, `fit` must produce a
+    matrix `R` such that `R @ R.T ≈ I`. Without this, `.transform` does not
+    preserve distances and the whole alignment theory breaks down.
+    """
+    source, target, vocab = data
+    aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=len(vocab))
+    aligner.fit(source, target, vocab, list(vocab))
+
+    assert aligner.orthogonal_matrix is not None
+    r = aligner.orthogonal_matrix
+    d = r.shape[0]
+    assert np.allclose(r @ r.T, np.eye(d), atol=1e-6)
