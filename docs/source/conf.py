@@ -9,7 +9,7 @@ sys.path.insert(0, file_path)
 project = "chronowords"
 copyright = "2024, Crow Intelligence"
 author = "Orsolya Putz, Zoltan Varju"
-release = "0.1.1"
+release = "0.2.1"
 
 # General configuration
 extensions = [
