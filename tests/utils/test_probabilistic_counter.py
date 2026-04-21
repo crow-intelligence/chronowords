@@ -1,4 +1,8 @@
+from collections import Counter
+
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from chronowords.utils.probabilistic_counter import (
     CountMinSketch,  # Adjust import based on your file structure
@@ -64,3 +68,21 @@ def test_estimate_error(cms):
     error = cms.estimate_error(confidence=0.95)
     assert error > 0
     assert error < cms.total
+
+
+@given(stream=st.lists(st.text(min_size=1, max_size=10), min_size=1, max_size=200))
+def test_query_never_underestimates_true_count(stream):
+    """CMS guarantee: query(k) >= true_count(k) for every key in any stream.
+
+    The defining property of Count-Min Sketch: hash collisions can inflate a
+    counter but never deflate it, so the returned estimate is an upper bound
+    on the true frequency. A violation would invalidate the error bounds the
+    whole library relies on.
+    """
+    sketch = CountMinSketch(width=500, depth=4, seed=42)
+    for item in stream:
+        sketch.update(item)
+
+    truth = Counter(stream)
+    for key, true_count in truth.items():
+        assert sketch.query(key) >= true_count

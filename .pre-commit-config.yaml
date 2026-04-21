@@ -14,8 +14,11 @@ repos:
         args: [ --fix ]
     -   id: ruff-format
 
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+-   repo: local
     hooks:
-    -   id: mypy
-        additional_dependencies: ['types-setuptools', 'types-requests']
+    -   id: ty
+        name: ty
+        entry: uv run ty check src tests
+        language: system
+        pass_filenames: false
+        types: [python]

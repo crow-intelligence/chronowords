@@ -2,6 +2,10 @@
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck
+from hypothesis import given
+from hypothesis import settings
+from hypothesis import strategies as st
 from scipy.sparse import csr_matrix
 
 from chronowords.topics.nmf import TopicModel
@@ -114,3 +118,26 @@ def test_alignment_different_vocabularies():
 
     aligned = model1.align_with(model2)
     assert len(aligned) > 0
+
+
+@given(n_topics=st.integers(min_value=2, max_value=5))
+@settings(
+    deadline=None,
+    max_examples=10,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+def test_topic_distributions_are_probability_distributions(simple_ppmi, n_topics):
+    """After fit, each topic's `distribution` must be a valid probability vector.
+
+    All entries must be non-negative, and the vector must sum to ~1. Downstream
+    code (alignment, document-topic assignment) treats these distributions as
+    probabilities; a violation breaks every consumer of the `Topic` object.
+    """
+    ppmi_matrix, vocabulary = simple_ppmi
+
+    model = TopicModel(n_topics=n_topics)
+    model.fit(ppmi_matrix, vocabulary)
+
+    for topic in model.topics:
+        assert np.all(topic.distribution >= 0)
+        assert abs(float(np.sum(topic.distribution)) - 1.0) < 1e-6
