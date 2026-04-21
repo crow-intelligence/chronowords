@@ -253,3 +253,35 @@ def test_distance_is_symmetric(trained_model, data):
         assert d12 is None and d21 is None
     else:
         assert abs(d12 - d21) < 1e-9
+
+
+@given(data=st.data(), n=st.integers(min_value=1, max_value=20))
+@settings(deadline=None, max_examples=50)
+def test_most_similar_output_contract(trained_model, data, n):
+    """`most_similar(word, n)` must honor its documented output contract.
+
+    For any vocab word with a non-zero embedding the returned list must
+    (i) have at most `n` entries, (ii) only contain distinct vocabulary
+    words other than the query, (iii) carry similarities in [-1, 1],
+    and (iv) be sorted by similarity descending. These invariants are what
+    downstream callers (analogy, temporal diff tooling) rely on.
+    """
+    vocab = trained_model.vocabulary
+    if len(vocab) < 2:
+        return
+    word = data.draw(st.sampled_from(vocab))
+
+    results = trained_model.most_similar(word, n=n)
+
+    assert len(results) <= n
+    vocab_set = set(vocab)
+    seen: set[str] = set()
+    for item in results:
+        assert item.word in vocab_set
+        assert item.word != word
+        assert item.word not in seen
+        seen.add(item.word)
+        assert -1.0 <= item.similarity <= 1.0
+
+    sims = [item.similarity for item in results]
+    assert sims == sorted(sims, reverse=True)

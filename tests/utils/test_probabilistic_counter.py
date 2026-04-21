@@ -86,3 +86,34 @@ def test_query_never_underestimates_true_count(stream):
     truth = Counter(stream)
     for key, true_count in truth.items():
         assert sketch.query(key) >= true_count
+
+
+@given(
+    stream_a=st.lists(st.text(min_size=1, max_size=10), max_size=100),
+    stream_b=st.lists(st.text(min_size=1, max_size=10), max_size=100),
+)
+def test_merge_equals_single_combined_stream(stream_a, stream_b):
+    """Merging two sketches is equivalent to a single sketch over both streams.
+
+    `merge` adds counter arrays elementwise (same width/depth/seeds), so for
+    every key the merged sketch's query must match what a single sketch would
+    report after ingesting stream_a followed by stream_b. Any divergence would
+    silently break distributed counting — the whole point of `merge`.
+    """
+    width, depth, seed = 500, 4, 42
+
+    merged = CountMinSketch(width=width, depth=depth, seed=seed)
+    other = CountMinSketch(width=width, depth=depth, seed=seed)
+    for item in stream_a:
+        merged.update(item)
+    for item in stream_b:
+        other.update(item)
+    merged.merge(other)
+
+    combined = CountMinSketch(width=width, depth=depth, seed=seed)
+    for item in stream_a + stream_b:
+        combined.update(item)
+
+    assert merged.total == combined.total
+    for key in set(stream_a) | set(stream_b):
+        assert merged.query(key) == combined.query(key)
