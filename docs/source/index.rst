@@ -12,6 +12,8 @@ shift over time using the Procrustes method.
 
 Built and maintained by `Crow Intelligence <https://crowintelligence.org/>`_.
 
+Install from `PyPI <https://pypi.org/project/chronowords/>`_.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

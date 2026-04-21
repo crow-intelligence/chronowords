@@ -1,6 +1,6 @@
 [project]
 name = "chronowords"
-version = "0.2.0"
+version = "0.2.1"
 description = "Detect semantic shifts in word embeddings over time"
 readme = "README.md"
 license = "MIT"
@@ -23,7 +23,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/crow-intelligence/chronowords"
 Repository = "https://github.com/crow-intelligence/chronowords"
-Documentation = "https://chronowords.readthedocs.io"
+Documentation = "https://chronowords.readthedocs.io/en/latest/"
 Organization = "https://crowintelligence.org/"
 
 [dependency-groups]
