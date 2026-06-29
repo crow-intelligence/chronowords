@@ -24,8 +24,16 @@ ctypedef np.int32_t DTYPE_t
 cdef class PPMIComputer:
     """Encapsulates PPMI computation state and methods.
 
-    This class computes PPMI (Positive Pointwise Mutual Information) matrices
-    using Count-Min Sketch for memory efficiency.
+    Computes a Positive Pointwise Mutual Information (PPMI) matrix directly
+    from Count-Min Sketch count tables, avoiding materialisation of a dense
+    co-occurrence matrix. Word and skip-gram counts are read back from the
+    sketch via the same hashing scheme used to populate it.
+
+    The PPMI for a word pair ``(a, b)`` is ``max(0, log(P(a,b) / (P(a)^alpha *
+    P(b))) - log(shift))``, where probabilities come from the sketch counts.
+    Both words must have a sketch count strictly greater than 5, and only
+    strictly-positive PMI values are retained, so the result is sparse and
+    non-negative.
     """
     cdef:
         public np.ndarray skipgram_counts
@@ -50,7 +58,44 @@ cdef class PPMIComputer:
                  double word_total,
                  double shift=1.0,
                  double alpha=0.75):
-        """Initialize the PPMI computer with Count-Min Sketch data."""
+        """Initialize the PPMI computer with Count-Min Sketch data.
+
+        Args:
+            skipgram_counts: Count-Min Sketch table for skip-gram pairs, a 2-D
+                int32 array of shape ``(depth, width)`` (from
+                ``CountMinSketch.arrays``).
+            word_counts: Count-Min Sketch table for single words, same
+                ``(depth, width)`` int32 shape and seeds as ``skipgram_counts``.
+            vocabulary: Words to compute PPMI over; defines the matrix axes.
+            seeds: One mmh3 hash seed per sketch row (length ``depth``).
+                Defaults to ``[1, 2, 3]`` if ``None``.
+            width: Sketch table width; used as the modulus for hash indices.
+                Must match the tables' second dimension.
+            skip_total: Total number of skip-gram observations (denominator for
+                joint probabilities). Must be > 0.
+            word_total: Total number of word observations (denominator for
+                marginal probabilities). Must be > 0.
+            shift: PMI shift; ``log(shift)`` is subtracted from each PMI (an
+                a shifted-PPMI / negative-sampling analogue). Must be > 0.
+            alpha: Context-distribution smoothing exponent applied to the focus
+                word's marginal (typically 0.75).
+
+        Raises:
+            ValueError: If any element of ``seeds`` is not an ``int``.
+
+        Note:
+            Preconditions not enforced:
+                - Array shapes, dtypes, and ``width`` consistency are assumed,
+                  not checked; a mismatch produces wrong counts or an
+                  out-of-bounds access (bounds checking is disabled).
+                - ``word_total``/``skip_total`` must be positive; a value of 0
+                  yields ``inf``/``nan`` PPMI entries. ``shift`` must be
+                  positive, otherwise ``log(shift)`` is ``nan``/``-inf``.
+                - The smoothing exponent ``alpha`` is applied only to the focus
+                  word's probability (``pa``), not the context word's (``pb``);
+                  this asymmetry is intentional but easy to misread — see the
+                  project pre-mortem.
+        """
         self.skipgram_counts = skipgram_counts
         self.word_counts = word_counts
         self.vocabulary = vocabulary
@@ -70,7 +115,12 @@ cdef class PPMIComputer:
         self.word_probs = vector[double]()
 
     cdef int _get_min_count(self, bytes word_bytes) except -1:
-        """Get minimum count from Count-Min Sketch arrays."""
+        """Return the Count-Min Sketch estimate for ``word_bytes``.
+
+        Hashes the key with each row seed and returns the minimum count across
+        rows — the standard CMS point query, which never underestimates the
+        true count.
+        """
         cdef:
             int i, idx, min_count
             int depth = self.skipgram_counts.shape[0]
@@ -86,7 +136,13 @@ cdef class PPMIComputer:
         return min_count
 
     cdef void _precompute_word_probabilities(self):
-        """Pre-compute word probabilities for efficiency."""
+        """Pre-compute per-word marginal probabilities into ``word_probs``.
+
+        For each vocabulary word, queries the sketch and stores
+        ``count / word_total`` if the count is strictly greater than 5,
+        otherwise 0.0. A stored probability of 0.0 marks the word as too rare
+        and excludes it from all PPMI pairs.
+        """
         cdef:
             int i, count
             int n = len(self.vocabulary)
@@ -104,7 +160,24 @@ cdef class PPMIComputer:
                 self.word_probs[i] = 0.0
 
     def compute_ppmi_batch(self, int start_idx, int end_idx):
-        """Compute PPMI for a batch of words."""
+        """Compute PPMI entries for focus words in ``[start_idx, end_idx)``.
+
+        Lazily precomputes word probabilities on the first call. For each focus
+        word in the half-open range (clamped to the vocabulary size) it scans
+        every context word and emits a PPMI entry when both words clear the
+        count-5 threshold and the resulting PMI is strictly positive.
+
+        Args:
+            start_idx: First focus-word index (inclusive).
+            end_idx: One past the last focus-word index (exclusive); clamped to
+                ``len(vocabulary)``.
+
+        Returns:
+            A tuple ``(data, row_indices, col_indices)`` of NumPy arrays giving
+            the COO components of the PPMI entries for this batch. All ``data``
+            values are strictly positive. The arrays are empty when no pair in
+            the batch qualifies.
+        """
         cdef:
             int i, j, pair_count
             double pa, pb, pab, pmi
@@ -148,7 +221,20 @@ cdef class PPMIComputer:
         return np.array(data), np.array(row_indices), np.array(col_indices)
 
     def compute_ppmi_matrix_with_sketch(self, int batch_size=1024):
-        """Compute complete PPMI matrix using batched processing."""
+        """Compute the complete PPMI matrix using batched processing.
+
+        Calls :meth:`compute_ppmi_batch` over successive focus-word batches and
+        assembles the results into a single sparse matrix.
+
+        Args:
+            batch_size: Number of focus words processed per batch. Affects
+                memory/throughput only, not the result.
+
+        Returns:
+            An ``(n, n)`` :class:`scipy.sparse.csr_matrix` (``n`` =
+            vocabulary size) of non-negative PPMI values. Returns an empty
+            ``(n, n)`` matrix when no pair qualifies.
+        """
         cdef:
             int n = len(self.vocabulary)
             list all_data = []

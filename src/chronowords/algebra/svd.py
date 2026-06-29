@@ -25,13 +25,11 @@ logger = logging.getLogger(__name__)
 class WordSimilarity:
     """Container for word similarity results.
 
-    Fields:
-    ------
-        word: The similar word found
-        similarity: Cosine similarity score (between -1 and 1)
+    Attributes:
+        word: The similar word found.
+        similarity: Cosine similarity score, in the range [-1, 1].
 
-    Examples
-    --------
+    Examples:
         >>> sim = WordSimilarity("cat", 0.85)
         >>> sim.word
         'cat'
@@ -50,13 +48,15 @@ class WordSimilarity:
 class AnalogyResult:
     """Container for word analogy results.
 
-    Fields:
-    ------
-        words: List of words matching the analogy
-        similarities: Corresponding similarity scores for each word
+    Attributes:
+        words: List of words matching the analogy, ordered by descending
+            similarity.
+        similarities: Similarity score for each word. Parallel to ``words``;
+            the producer (:meth:`SVDAlgebra.analogy`) guarantees
+            ``len(words) == len(similarities)``, but this dataclass does not
+            enforce it.
 
-    Examples
-    --------
+    Examples:
         >>> result = AnalogyResult(["queen"], [0.76])
         >>> result.words
         ['queen']
@@ -74,11 +74,17 @@ class AnalogyResult:
 class SVDAlgebra:
     """Implements word vector algebra using SVD-based embeddings.
 
-    Uses Count-Min Sketch for memory-efficient counting and
-    Cython-optimized PPMI computation.
+    Builds PPMI-weighted word embeddings from a corpus via truncated SVD,
+    using a Count-Min Sketch for memory-efficient counting and a
+    Cython-optimized PPMI kernel.
 
-    Examples
-    --------
+    The model has a two-phase lifecycle: it is unusable until :meth:`train`
+    (or :meth:`load_model`) has populated ``vocabulary`` and ``embeddings``.
+    Query methods (:meth:`most_similar`, :meth:`distance`, :meth:`analogy`,
+    :meth:`get_vector`) return an empty result or ``None`` if called before
+    training rather than raising.
+
+    Examples:
         >>> model = SVDAlgebra(n_components=2)
         >>> model.n_components
         2
@@ -98,15 +104,26 @@ class SVDAlgebra:
         """Initialize SVDAlgebra.
 
         Args:
-        ----
-            n_components: Number of SVD components to keep
-            window_size: Window size for skipgrams
-            min_word_length: Minimum word length to consider
-            cms_width: Width of Count-Min Sketch tables
-            cms_depth: Number of hash functions for Count-Min Sketch
+            n_components: Number of SVD components (embedding dimensions) to
+                keep. During :meth:`train` this is clamped to
+                ``min(n_components, min(matrix.shape) - 1)`` and floored at 1,
+                so a value larger than the vocabulary yields fewer dimensions.
+            window_size: Skip-gram context window size.
+            min_word_length: Minimum word length to consider; shorter tokens
+                are dropped during training.
+            cms_width: Width of the Count-Min Sketch tables. Larger values
+                reduce count collisions at the cost of memory
+                (``cms_width * cms_depth * 4`` bytes per sketch).
+            cms_depth: Number of hash functions (rows) in the Count-Min Sketch.
+
+        Note:
+            Constructor arguments are stored without validation. The integer
+            arguments are assumed positive; non-positive values surface later
+            as errors from NumPy allocation (``cms_width``/``cms_depth``) or
+            from :func:`scipy.sparse.linalg.svds` (``n_components``) during
+            :meth:`train`, not here.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=100)
             >>> model.n_components
             100
@@ -134,12 +151,39 @@ class SVDAlgebra:
     def train(self, corpus: Generator[str, None, None]) -> None:
         """Train the model on a text corpus.
 
+        Counts words and skip-grams with a Count-Min Sketch, builds the
+        vocabulary from words above a fixed frequency threshold, computes a
+        sparse PPMI matrix, and factorises it with truncated SVD. On success,
+        populates ``vocabulary``, ``embeddings``, ``_ppmi_sparse`` and
+        ``M_dense``.
+
         Args:
-        ----
-            corpus: Generator yielding text lines
+            corpus: Iterable of text lines (e.g. a generator). Each line is
+                split on whitespace; tokens shorter than ``min_word_length``
+                are discarded.
+
+        Raises:
+            ValueError: If no word clears the 0.01% heavy-hitter frequency
+                threshold, i.e. the corpus is empty or too small to build a
+                vocabulary (explicit check after counting).
+
+        Note:
+            Precondition: ``corpus`` is consumed exactly once; passing a
+            single-use iterator that has already been exhausted produces an
+            empty vocabulary and raises ``ValueError``.
+
+            Words are frequency-filtered by a Count-Min Sketch, which can
+            *overestimate* counts on hash collisions, so a rare word may
+            occasionally be admitted to the vocabulary.
+
+            Silenced failure: if sparse :func:`~scipy.sparse.linalg.svds`
+            raises (common for tiny or degenerate matrices), the error is
+            swallowed and the code falls back to a dense SVD of the matrix
+            *with Gaussian noise (sigma 1e-10) added*. The fallback path is
+            invisible to the caller and yields slightly different,
+            non-deterministic embeddings from the sparse path.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=2)
             >>> text = ["the cat sat", "the dog ran"]
             >>> model.train(line for line in text)
@@ -225,12 +269,27 @@ class SVDAlgebra:
     def save_model(self, path: str | Path) -> None:
         """Save model embeddings and vocabulary to disk.
 
+        Writes up to four files into ``path``: ``ppmi.npz`` (sparse PPMI),
+        ``ppmi.npy`` (dense PPMI), ``embeddings.npy``, and ``vocabulary.pkl``.
+
         Args:
-        ----
-            path: Directory to save model files. Will be created if it doesn't exist
+            path: Directory to write model files to. Created (including
+                parents) if it does not exist.
+
+        Raises:
+            OSError: If ``path`` cannot be created or written (e.g. permission
+                denied, read-only filesystem) — propagated from ``mkdir`` /
+                ``np.save`` / ``open``.
+
+        Note:
+            Only attributes that are currently set are written: each of the
+            PPMI matrices and ``embeddings`` is saved only when not
+            ``None``. Calling this before :meth:`train` therefore writes a
+            ``vocabulary.pkl`` holding an empty list and no ``embeddings.npy``,
+            which makes the resulting directory unloadable by
+            :meth:`load_model`. No warning is emitted for a partial save.
 
         Examples:
-        --------
             >>> import tempfile
             >>> from pathlib import Path
             >>> model = SVDAlgebra(n_components=2)
@@ -259,16 +318,33 @@ class SVDAlgebra:
     def load_model(self, path: str | Path) -> None:
         """Load model embeddings and vocabulary from disk.
 
+        Restores ``embeddings``, ``vocabulary`` and (if present) ``M_dense``
+        from a directory previously written by :meth:`save_model`, and rebuilds
+        the vocabulary index.
+
         Args:
-        ----
-            path: Directory containing model files
+            path: Directory containing the saved model files.
 
         Raises:
-        ------
-            ValueError: If directory doesn't exist
+            ValueError: If ``path`` is not an existing directory (explicit
+                check).
+            FileNotFoundError: If ``embeddings.npy`` or ``vocabulary.pkl`` is
+                missing from ``path`` (implicit, from ``np.load`` / ``open``) —
+                e.g. when the directory came from a pre-training
+                :meth:`save_model`.
+            pickle.UnpicklingError: If ``vocabulary.pkl`` is corrupt.
+
+        Warning:
+            This method unpickles ``vocabulary.pkl``. Unpickling executes
+            arbitrary code embedded in the file, so only load model directories
+            from sources you trust.
+
+        Note:
+            ``ppmi.npy`` is restored only if present; ``ppmi.npz`` (the sparse
+            PPMI matrix) is not reloaded, so ``_ppmi_sparse`` stays ``None``
+            after loading.
 
         Examples:
-        --------
             >>> import tempfile
             >>> from pathlib import Path
             >>> model = SVDAlgebra(n_components=2)
@@ -299,15 +375,14 @@ class SVDAlgebra:
         """Get the embedding vector for a word.
 
         Args:
-        ----
-            word: Input word to look up
+            word: Input word to look up.
 
         Returns:
-        -------
-            Word vector if word is in vocabulary, None otherwise
+            The word's embedding vector, or ``None`` if the model is untrained
+            (``embeddings is None``) or ``word`` is not in the vocabulary. A
+            ``None`` return does not distinguish these two cases.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["cat", "dog"]
             >>> model._build_vocab_index()
@@ -329,19 +404,26 @@ class SVDAlgebra:
         return self.embeddings[idx]
 
     def most_similar(self, word: str, n: int = 10) -> list[WordSimilarity]:
-        """Find the n most similar words.
+        """Find the n most similar words by cosine similarity.
 
         Args:
-        ----
-            word: Query word
-            n: Number of similar words to return
+            word: Query word.
+            n: Maximum number of similar words to return.
 
         Returns:
-        -------
-            List of similar words with their similarity scores
+            Up to ``n`` :class:`WordSimilarity` results, sorted by descending
+            cosine similarity, excluding ``word`` itself. Empty if the model is
+            untrained, ``word`` is unknown, or ``word``'s vector has
+            effectively zero norm — these cases are indistinguishable from
+            "no similar words found".
+
+        Note:
+            Silenced numerical issues: vocabulary norms are floored at 1e-10 to
+            avoid division by zero, and any ``NaN`` similarity (from zero-norm
+            embeddings) is replaced with -1.0 and then filtered out, so
+            degenerate vectors are silently excluded rather than reported.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["cat", "dog", "fish"]
             >>> model._build_vocab_index()
@@ -386,16 +468,16 @@ class SVDAlgebra:
         """Calculate cosine distance between two words.
 
         Args:
-        ----
-            word1: First word
-            word2: Second word
+            word1: First word.
+            word2: Second word.
 
         Returns:
-        -------
-            Cosine distance between word vectors, or None if either word is unknown
+            Cosine distance in the range [0, 1], or ``None`` if either word is
+            unknown (or the model is untrained) or either vector has
+            effectively zero norm. A ``None`` return does not distinguish these
+            cases.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["cat", "dog"]
             >>> model._build_vocab_index()
@@ -425,19 +507,29 @@ class SVDAlgebra:
     ) -> AnalogyResult | None:
         """Solve word analogies (e.g., king - man + woman ≈ queen).
 
+        Computes the target vector ``negative - positive[0] + positive[1]``,
+        normalises it, and returns the vocabulary words closest to it.
+
         Args:
-        ----
-            positive: List of two positive words for the analogy
-            negative: The negative word
-            n: Number of results to return
+            positive: Exactly two positive words for the analogy.
+            negative: The negative word.
+            n: Maximum number of results to return.
 
         Returns:
-        -------
-            AnalogyResult containing similar words and their similarity scores,
-            or None if any input words are unknown
+            An :class:`AnalogyResult` (words sorted by descending similarity,
+            excluding the three input words and tokens shorter than
+            ``min_word_length``), or ``None``. Several distinct conditions all
+            collapse to ``None``: ``positive`` does not have exactly two
+            elements, the model is untrained, any input word is unknown, the
+            target vector is degenerate (near-zero norm), or no candidate
+            remains after filtering.
+
+        Note:
+            Silenced numerical issues: as in :meth:`most_similar`, vocabulary
+            norms are floored at 1e-10 and ``NaN`` similarities are mapped to
+            -1.0 and filtered out.
 
         Examples:
-        --------
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["king", "man", "woman", "queen"]
             >>> model._build_vocab_index()

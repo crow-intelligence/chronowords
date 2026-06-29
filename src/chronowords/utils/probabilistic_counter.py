@@ -5,12 +5,15 @@ import numpy as np
 class CountMinSketch:
     """Count-Min Sketch implementation for memory-efficient counting.
 
-    Uses multiple hash functions to approximate frequencies with bounded error.
-    Memory usage: width * depth * 4 bytes
-    Error bound: ≈ 2/width with probability 1 - 1/2^depth
+    Uses ``depth`` hash functions over ``width`` counters each to approximate
+    item frequencies in fixed memory. Queries never underestimate the true
+    count; they may overestimate it due to hash collisions.
 
-    Examples
-    --------
+    - Memory usage: ``width * depth * 4`` bytes (int32 counters).
+    - Error bound: an overestimate of about ``2 / width`` of the total count,
+      with probability at least ``1 - 1 / 2**depth``.
+
+    Examples:
         >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
         >>> cms.width
         1000
@@ -29,11 +32,20 @@ class CountMinSketch:
         """Initialize Count-Min Sketch.
 
         Args:
-        ----
-            width: Number of counters per hash function (controls accuracy)
-            depth: Number of hash functions (controls probability bound)
-            seed: Random seed for hash function initialization
-            track_keys: Whether to track observed keys (disable for memory savings)
+            width: Number of counters per hash function (controls accuracy).
+                Must be a positive integer.
+            depth: Number of hash functions / rows (controls the probability
+                bound). Must be a positive integer.
+            seed: Seed for deriving the per-row hash seeds; fixes the sketch's
+                hashing so that two sketches with the same ``seed`` (and
+                ``width``/``depth``) are merge-compatible.
+            track_keys: Whether to record observed keys so
+                :meth:`get_heavy_hitters` can enumerate them. Disable to save
+                memory; :meth:`get_heavy_hitters` then raises.
+
+        Note:
+            Arguments are not validated. ``width``/``depth`` must be positive
+            or the underlying ``numpy.zeros((depth, width))`` allocation fails.
 
         """
         self.width = width
@@ -61,12 +73,12 @@ class CountMinSketch:
         """Update count for a key.
 
         Args:
-        ----
-            key: Item to count (string or bytes)
-            count: Amount to increment (default: 1)
+            key: Item to count. ``str`` keys are UTF-8 encoded; ``bytes`` keys
+                are used as-is (and decoded for key tracking).
+            count: Amount to increment by (default 1). Added to ``total`` and
+                to each row counter as-is; no positivity check is performed.
 
         Examples:
-        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms.update("apple")
             >>> cms.update("apple")
@@ -94,10 +106,18 @@ class CountMinSketch:
         self.counts[self._row_indices, indices] += count
 
     def query(self, key: str | bytes) -> int:
-        """Query count for a key.
+        """Query the estimated count for a key.
 
-        Examples
-        --------
+        Args:
+            key: Item to look up (``str`` is UTF-8 encoded; ``bytes`` used
+                as-is).
+
+        Returns:
+            The minimum counter across rows, which is the Count-Min Sketch
+            estimate. This never underestimates the true count and returns 0
+            for an unseen key (barring collisions).
+
+        Examples:
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms.update("rare_word")
             >>> cms.query("rare_word")
@@ -113,22 +133,25 @@ class CountMinSketch:
         return int(np.min(self.counts[self._row_indices, indices]))
 
     def get_heavy_hitters(self, threshold: float) -> list[tuple[str, int]]:
-        """Get items that appear more than threshold * total times.
+        """Get items that appear more than ``threshold * total`` times.
 
         Args:
-        ----
-            threshold: Minimum frequency as fraction of total counts
+            threshold: Minimum frequency as a fraction of the total count,
+                normally in (0, 1). Not validated; the comparison threshold is
+                ``int(total * threshold)`` (truncated toward zero).
 
         Returns:
-        -------
-            List of (item, count) pairs sorted by count descending
+            ``(item, count)`` pairs whose estimated count is strictly greater
+            than ``int(total * threshold)``, sorted by descending count.
+            Counts are CMS estimates, so a returned count may overestimate the
+            true value (and a borderline item may be a false positive), but no
+            genuine heavy hitter is missed.
 
         Raises:
-        ------
-            RuntimeError: If track_keys was disabled
+            RuntimeError: If the sketch was created with ``track_keys=False``,
+                since observed keys are then not retained.
 
         Examples:
-        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> # Add a frequent word
             >>> for _ in range(100):
@@ -157,10 +180,22 @@ class CountMinSketch:
         return sorted(candidates.items(), key=lambda x: x[1], reverse=True)
 
     def merge(self, other: "CountMinSketch") -> None:
-        """Merge another sketch into this one.
+        """Merge another sketch into this one, in place.
 
-        Examples
-        --------
+        Adds ``other``'s counters and total into ``self`` and unions the
+        tracked keys. Because both sketches share hashing parameters, the
+        result is identical to a single sketch built from the concatenation of
+        the two input streams.
+
+        Args:
+            other: Another sketch with the same ``width``, ``depth`` and
+                derived ``seeds`` as ``self``.
+
+        Raises:
+            ValueError: If ``other`` is not merge-compatible (differing
+                ``width``, ``depth`` or ``seeds``).
+
+        Examples:
             >>> cms1 = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms2 = CountMinSketch(width=1000, depth=5, seed=42)
             >>> cms1.update("word", count=3)
@@ -190,18 +225,22 @@ class CountMinSketch:
         self._observed_keys.update(other._observed_keys)
 
     def estimate_error(self, confidence: float = 0.95) -> float:
-        """Estimate maximum counting error.
+        """Estimate the maximum counting error.
 
         Args:
-        ----
-            confidence: Confidence level for the error bound
+            confidence: Intended confidence level for the bound.
 
         Returns:
-        -------
-            Maximum expected counting error at given confidence level
+            The expected maximum overestimate, ``(2 / width) * total``.
+
+        Note:
+            The ``confidence`` argument currently has **no effect** on the
+            returned value: an internal ``delta`` term is computed from
+            ``confidence`` but discarded before the return. The result depends
+            only on ``width`` and ``total``. Flagged in the project pre-mortem;
+            kept as-is to preserve behaviour.
 
         Examples:
-        --------
             >>> cms = CountMinSketch(width=1000, depth=5, seed=42)
             >>> for _ in range(1000):
             ...     cms.update("word")
@@ -222,10 +261,15 @@ class CountMinSketch:
 
     @property
     def arrays(self) -> tuple[np.ndarray, list[int], int]:
-        """Get raw arrays and parameters for Cython code.
+        """Get raw arrays and parameters for the Cython PPMI kernel.
 
-        Examples
-        --------
+        Returns:
+            A tuple ``(counts, seeds, width)`` exposing the internal count
+            table (shape ``(depth, width)``), the per-row hash seeds, and the
+            table width — the inputs :class:`~chronowords.utils.count_skipgrams.PPMIComputer`
+            needs to re-query the sketch.
+
+        Examples:
             >>> cms = CountMinSketch(width=3, depth=2, seed=42)
             >>> counts, seeds, width = cms.arrays
             >>> counts.shape

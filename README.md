@@ -29,19 +29,26 @@ pip install chronowords
 from chronowords.algebra import SVDAlgebra
 from chronowords.topics import TopicModel
 
-# Train word embeddings
+# Train word embeddings on any iterable of text lines
+# (a list, a generator, or an open file).
 model = SVDAlgebra(n_components=300)
-model.train(your_corpus_iterator)
+with open("corpus.txt", encoding="utf-8") as fh:
+    model.train(fh)
 
 # Find similar words
-similar = model.most_similar('computer')
-for word in similar:
-    print(f"{word.word}: {word.similarity:.3f}")
+for hit in model.most_similar("computer", n=10):
+    print(f"{hit.word}: {hit.similarity:.3f}")
 
-# Create topic model
+# Topic model over the PPMI matrix that train() computed
 topic_model = TopicModel(n_topics=10)
-topic_model.fit(ppmi_matrix, vocabulary)
+topic_model.fit(model._ppmi_sparse, model.vocabulary)
+topic_model.print_topics()
 ```
+
+See the [quickstart](https://chronowords.readthedocs.io/en/latest/quickstart.html)
+for a complete runnable example and the
+[tutorial](https://chronowords.readthedocs.io/en/latest/tutorial.html) for
+detecting semantic shift across time slices.
 
 ## Links
 - Documentation: <https://chronowords.readthedocs.io/en/latest/>

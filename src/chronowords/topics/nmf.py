@@ -13,13 +13,16 @@ from sklearn.decomposition import NMF
 class Topic:
     """Container for topic information.
 
-    Fields:
-        id: Unique topic identifier
-        words: List of (word, weight) pairs for top words
-        distribution: Full probability distribution over vocabulary
+    Attributes:
+        id: Unique topic identifier.
+        words: List of ``(word, weight)`` pairs for the top words, ordered by
+            descending weight.
+        distribution: Full weight distribution over the vocabulary. Produced by
+            :meth:`TopicModel.fit` as a non-negative vector that sums to 1
+            (unless the raw NMF weights summed to 0, in which case it is left
+            unnormalised). The dataclass does not enforce this.
 
-    Examples
-    --------
+    Examples:
         >>> import numpy as np
         >>> dist = np.array([0.5, 0.3, 0.2])
         >>> topic = Topic(1, [('cat', 0.5), ('dog', 0.3)], dist)
@@ -41,13 +44,14 @@ class Topic:
 class AlignedTopic:
     """Container for aligned topic pairs.
 
-    Fields:
-        source_topic: Topic from source time period
-        target_topic: Topic from target time period
-        similarity: Cosine similarity between topics
+    Attributes:
+        source_topic: Topic from the source time period.
+        target_topic: Topic from the target time period.
+        similarity: Cosine similarity between the two topic distributions, in
+            the range [-1, 1] (typically [0, 1] for non-negative
+            distributions).
 
-    Examples
-    --------
+    Examples:
         >>> import numpy as np
         >>> dist = np.array([0.5, 0.3, 0.2])
         >>> topic1 = Topic(1, [('cat', 0.5)], dist)
@@ -82,13 +86,19 @@ class TopicModel:
         """Initialize topic model.
 
         Args:
-        ----
-            n_topics: Number of topics to extract
-            max_iter: Maximum number of iterations for NMF
-            min_similarity: Minimum similarity for topic alignment
+            n_topics: Number of topics (NMF components) to extract. Must not
+                exceed the smaller dimension of the matrix passed to
+                :meth:`fit`, or sklearn's NMF raises.
+            max_iter: Maximum number of NMF iterations.
+            min_similarity: Minimum cosine similarity for a pair to be kept by
+                :meth:`align_with`.
+
+        Note:
+            Arguments are passed to :class:`sklearn.decomposition.NMF`
+            unvalidated; invalid values (e.g. ``n_topics <= 0``) surface as
+            errors from sklearn during :meth:`fit`, not here.
 
         Examples:
-        --------
             >>> model = TopicModel(n_topics=5, max_iter=100)
             >>> model.n_topics
             5
@@ -115,14 +125,31 @@ class TopicModel:
     ) -> None:
         """Fit topic model to PPMI matrix.
 
+        Runs NMF on ``ppmi_matrix``, then builds one :class:`Topic` per
+        component with a normalised weight distribution and its top words.
+        Populates ``vocabulary``, ``topic_word_matrix`` and ``topics``.
+
         Args:
-        ----
-            ppmi_matrix: Sparse PPMI matrix from word embeddings
-            vocabulary: List of words corresponding to matrix columns
-            top_n_words: Number of top words to store per topic
+            ppmi_matrix: Non-negative (sparse) PPMI matrix. Its number of
+                columns must equal ``len(vocabulary)``.
+            vocabulary: Words corresponding to the matrix columns.
+            top_n_words: Number of top words to store per topic.
+
+        Raises:
+            ValueError: From :class:`sklearn.decomposition.NMF` if
+                ``n_topics`` exceeds the matrix dimensions or the matrix
+                contains negative entries (PPMI is non-negative, so the latter
+                normally cannot happen).
+            IndexError: If ``len(vocabulary)`` is smaller than the number of
+                matrix columns (implicit, when indexing ``vocabulary[idx]`` for
+                top words). Not checked explicitly.
+
+        Note:
+            For any topic whose raw NMF weights sum to 0, the distribution is
+            left unnormalised (it stays all-zero) rather than raising — that
+            topic's ``distribution`` will not sum to 1.
 
         Examples:
-        --------
             >>> import numpy as np
             >>> from scipy.sparse import csr_matrix
             >>> model = TopicModel(n_topics=2)
@@ -175,16 +202,25 @@ class TopicModel:
         """Get topic distribution for a document vector.
 
         Args:
-        ----
-            doc_vector: Document vector in vocabulary space
-            threshold: Minimum topic proportion to include
+            doc_vector: Document vector in vocabulary space. Its length must
+                match the feature dimension the model was fit on.
+            threshold: Minimum topic proportion to include (strict ``>``).
 
         Returns:
-        -------
-            List of (topic_id, weight) pairs above threshold, sorted by weight
+            ``(topic_id, weight)`` pairs whose weight strictly exceeds
+            ``threshold``, sorted by descending weight. May be empty.
+
+        Raises:
+            ValueError: If the model has not been fit
+                (``topic_word_matrix is None``) — explicit check.
+
+        Note:
+            If the projected topic weights sum to 0, they are returned
+            unnormalised rather than raising. ``doc_vector`` of the wrong
+            length raises from :meth:`sklearn.decomposition.NMF.transform`
+            (not checked here).
 
         Examples:
-        --------
             >>> import numpy as np
             >>> from scipy.sparse import csr_matrix
             >>> model = TopicModel(n_topics=2)
@@ -223,19 +259,26 @@ class TopicModel:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Align two topic distributions to use the same vocabulary space.
 
+        Projects both topics onto the sorted union of ``vocab1`` and ``vocab2``
+        (missing words get weight 0), then renormalises each to sum to 1.
+
         Args:
-        ----
-            topic1: First topic
-            topic2: Second topic
-            vocab1: Vocabulary for first topic
-            vocab2: Vocabulary for second topic
+            topic1: First topic. ``topic1.distribution`` must be indexable by
+                ``vocab1`` positions.
+            topic2: Second topic. ``topic2.distribution`` must be indexable by
+                ``vocab2`` positions.
+            vocab1: Vocabulary for ``topic1``.
+            vocab2: Vocabulary for ``topic2``.
 
         Returns:
-        -------
-            Tuple of aligned distributions
+            Two distributions of equal length (the size of the unified
+            vocabulary), each renormalised to sum to 1 unless it was all-zero.
+
+        Note:
+            A distribution that is shorter than its vocabulary raises
+            ``IndexError`` while gathering values (not checked).
 
         Examples:
-        --------
             >>> import numpy as np
             >>> model = TopicModel()
             >>> dist1 = np.array([0.6, 0.4])
@@ -280,17 +323,24 @@ class TopicModel:
     def _compute_topic_similarity(self, topic1: Topic, topic2: Topic) -> float:
         """Compute cosine similarity between topic distributions.
 
+        Both topics are aligned against ``self.vocabulary`` (so this assumes
+        both come from this model's vocabulary), then compared.
+
         Args:
-        ----
-            topic1: First topic
-            topic2: Second topic
+            topic1: First topic.
+            topic2: Second topic.
 
         Returns:
-        -------
-            Cosine similarity between the topics
+            Cosine similarity in [-1, 1]. Returns 0.0 if either aligned
+            distribution is all-zero, if the result is ``NaN``, or if any
+            exception is raised during the computation.
+
+        Note:
+            The computation is wrapped in a broad ``except Exception`` that
+            maps any failure to 0.0, so a genuine error is indistinguishable
+            from a true zero similarity. See the project pre-mortem.
 
         Examples:
-        --------
             >>> import numpy as np
             >>> model = TopicModel()
             >>> dist1 = np.array([1, 0])
@@ -322,22 +372,32 @@ class TopicModel:
             return 0.0
 
     def align_with(self, other: "TopicModel") -> list[AlignedTopic]:
-        """Align topics with another model using Hungarian algorithm.
+        """Align topics with another model using the Hungarian algorithm.
+
+        Builds a topic-by-topic cosine-distance cost matrix over the unified
+        vocabulary, finds the optimal one-to-one matching with
+        :func:`scipy.optimize.linear_sum_assignment`, and keeps pairs whose
+        similarity is at least ``min_similarity``.
 
         Args:
-        ----
-            other: Another fitted TopicModel
+            other: Another fitted :class:`TopicModel`.
 
         Returns:
-        -------
-            List of aligned topic pairs sorted by similarity
+            Matched :class:`AlignedTopic` pairs with similarity >=
+            ``min_similarity``, sorted by descending similarity. May be empty
+            if no pair clears the threshold.
 
         Raises:
-        ------
-            ValueError: If either model is not fitted
+            ValueError: If either model has not been fit (``self.topics`` or
+                ``other.topics`` is empty).
+
+        Note:
+            Each topic's ``distribution`` is assumed indexable by its model's
+            ``vocabulary``. Unlike :meth:`_compute_topic_similarity`, the
+            cosine call here is not guarded, so an all-zero distribution can
+            yield a ``NaN`` cost entry.
 
         Examples:
-        --------
             >>> import numpy as np
             >>> from scipy.sparse import csr_matrix
             >>> model1 = TopicModel(n_topics=2)
@@ -406,11 +466,13 @@ class TopicModel:
         """Print top words for each topic.
 
         Args:
-        ----
-            top_n: Number of top words to print per topic
+            top_n: Maximum number of top words to print per topic.
+
+        Note:
+            Prints to stdout and returns ``None``. If the model has not been
+            fit, prints an advisory message instead of raising.
 
         Examples:
-        --------
             >>> from scipy.sparse import csr_matrix
             >>> model = TopicModel(n_topics=1)
             >>> ppmi = csr_matrix([[1, 0], [0, 1]])
