@@ -52,7 +52,7 @@ class ProcrustesAligner:
 
     def __init__(
         self, min_freq_rank: int | None = None, max_freq_rank: int | None = 1000
-    ):
+    ) -> None:
         """Initialize the aligner.
 
         Args:
@@ -238,7 +238,7 @@ class ProcrustesAligner:
 
     def get_word_similarity(
         self, word: str, source_emb: np.ndarray, target_emb: np.ndarray
-    ):
+    ) -> float | None:
         """Get similarity between word representations in source and target spaces.
 
         Args:
