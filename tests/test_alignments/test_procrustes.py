@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as hynp
 
 from chronowords.alignment.procrustes import ProcrustesAligner
+from tests.strategies import embedding_pair_with_orthogonal_target
 
 
 def test_basic_alignment(simple_embeddings):
@@ -208,3 +209,63 @@ def test_learned_matrix_is_orthogonal(data):
     r = aligner.orthogonal_matrix
     d = r.shape[0]
     assert np.allclose(r @ r.T, np.eye(d), atol=1e-6)
+
+
+@given(data=embedding_pair_with_orthogonal_target())
+@settings(deadline=None, max_examples=30)
+def test_transform_is_an_isometry(data):
+    """Transform applies an orthogonal map, so it preserves vector norms.
+
+    Distance preservation is the entire point of Procrustes alignment: an
+    orthogonal R means `||x @ R|| == ||x||`. If transform changed norms, the
+    aligned cosine similarities used for semantic-shift detection would be
+    meaningless.
+    """
+    source, target, vocab, _ = data
+    aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=len(vocab))
+    aligner.fit(source, target, vocab, list(vocab))
+
+    transformed = aligner.transform(source)
+    assert np.allclose(
+        np.linalg.norm(transformed, axis=1),
+        np.linalg.norm(source, axis=1),
+        atol=1e-6,
+    )
+
+
+@given(data=embedding_pair_with_orthogonal_target())
+@settings(deadline=None, max_examples=30)
+def test_save_load_round_trip(data):
+    """A fitted aligner survives a save/load cycle unchanged.
+
+    Persistence is only useful if a reloaded aligner is indistinguishable from
+    the original — same rotation, same anchor bookkeeping.
+    """
+    source, target, vocab, _ = data
+    aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=len(vocab))
+    aligner.fit(source, target, vocab, list(vocab))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "aligner.pkl"
+        aligner.save(path)
+        reloaded = ProcrustesAligner()
+        reloaded.load(path)
+
+    assert reloaded.orthogonal_matrix is not None
+    assert aligner.orthogonal_matrix is not None
+    assert np.allclose(reloaded.orthogonal_matrix, aligner.orthogonal_matrix)
+    assert reloaded.source_words == aligner.source_words
+    assert reloaded.target_words == aligner.target_words
+    assert reloaded.anchors == aligner.anchors
+
+
+def test_find_common_words_returns_intersection():
+    """find_common_words returns only words present in BOTH vocabularies.
+
+    Mutation-testing gap: intersection->union survived (fit silently skips the
+    extra words) until this direct test.
+    """
+    aligner = ProcrustesAligner(min_freq_rank=0, max_freq_rank=10)
+    source = ["king", "queen", "man"]
+    target = ["queen", "man", "woman"]
+    assert aligner.find_common_words(source, target) == ["man", "queen"]

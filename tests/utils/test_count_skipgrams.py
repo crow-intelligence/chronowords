@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import settings
 
 from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
+from tests.strategies import ppmi_inputs
 
 
 @pytest.fixture
@@ -124,3 +127,19 @@ def test_ppmi_invalid_seeds():
             skip_total=1.0,
             word_total=1.0,
         )
+
+
+@given(inputs=ppmi_inputs())
+@settings(deadline=None, max_examples=60)
+def test_ppmi_values_are_non_negative(inputs):
+    """Every PPMI entry is non-negative for any valid count inputs.
+
+    PPMI keeps only strictly-positive PMI values, so the resulting sparse
+    matrix must never contain a negative entry. Non-negativity is a hard
+    precondition for the downstream NMF topic model.
+    """
+    computer = PPMIComputer(**inputs)
+    matrix = computer.compute_ppmi_matrix_with_sketch()
+    n = len(inputs["vocabulary"])
+    assert matrix.shape == (n, n)
+    assert np.all(matrix.data >= 0)
