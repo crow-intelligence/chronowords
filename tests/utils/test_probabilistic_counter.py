@@ -117,3 +117,34 @@ def test_merge_equals_single_combined_stream(stream_a, stream_b):
     assert merged.total == combined.total
     for key in set(stream_a) | set(stream_b):
         assert merged.query(key) == combined.query(key)
+
+
+def test_query_returns_minimum_across_rows():
+    """Query must return the MIN across rows — the defining CMS estimator.
+
+    Returning any other row's value (e.g. the max) would inflate counts under
+    hash collisions and break the tightness of the never-underestimate bound.
+    Mutation-testing gap: min->max survived until this test.
+    """
+    cms = CountMinSketch(width=10, depth=3, seed=42)
+    key = b"x"
+    indices = cms._hash_indices(key)
+    for row, idx in enumerate(indices):
+        cms.counts[row, idx] = (row + 1) * 10  # rows hold 10, 20, 30
+    assert cms.query(key) == 10  # the minimum, not 20 or 30
+
+
+def test_get_heavy_hitters_threshold_is_strict():
+    """A key whose count equals exactly threshold*total is excluded.
+
+    The cutoff is strict (`>`), so boundary items are not heavy hitters.
+    Mutation-testing gap: `>`->`>=` survived until this test.
+    """
+    cms = CountMinSketch(width=1000, depth=5, seed=42)
+    for _ in range(90):
+        cms.update("filler")
+    for _ in range(10):
+        cms.update("border")  # count 10; total 100; threshold_count == 10
+    hitters = dict(cms.get_heavy_hitters(threshold=0.1))
+    assert "border" not in hitters  # 10 is not > 10
+    assert "filler" in hitters

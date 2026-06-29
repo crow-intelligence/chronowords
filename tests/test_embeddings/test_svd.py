@@ -1,3 +1,5 @@
+import tempfile
+
 import numpy as np
 import pytest
 from hypothesis import given
@@ -7,6 +9,7 @@ from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
 from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
+from tests.strategies import trainable_corpus
 
 
 def test_ppmi_computation():
@@ -285,3 +288,25 @@ def test_most_similar_output_contract(trained_model, data, n):
 
     sims = [item.similarity for item in results]
     assert sims == sorted(sims, reverse=True)
+
+
+@given(corpus=trainable_corpus())
+@settings(deadline=None, max_examples=15)
+def test_save_load_round_trip(corpus):
+    """save_model then load_model reproduces the vocabulary and embeddings.
+
+    Models are trained once and reloaded many times downstream, so a reloaded
+    model must be indistinguishable from the original.
+    """
+    model = SVDAlgebra(n_components=5, cms_width=2000, cms_depth=3, min_word_length=2)
+    model.train(iter(corpus))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        model.save_model(tmp)
+        reloaded = SVDAlgebra()
+        reloaded.load_model(tmp)
+
+    assert reloaded.vocabulary == model.vocabulary
+    assert model.embeddings is not None
+    assert reloaded.embeddings is not None
+    assert np.allclose(reloaded.embeddings, model.embeddings)
