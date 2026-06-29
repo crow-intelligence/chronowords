@@ -62,6 +62,31 @@ SciPy
 scikit-learn
 Cython
 
+## Roadmap / further work
+
+The following are known limitations and improvements not yet addressed. They are
+documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
+
+- **Robustness / error reporting**
+  - `CountMinSketch.estimate_error` currently ignores its `confidence` argument
+    (the result depends only on `width` and `total`) — decide the intended bound
+    and honour the parameter.
+  - Narrow the broad `except Exception` blocks in `SVDAlgebra.train` (the silent,
+    noise-injecting dense-SVD fallback) and `TopicModel._compute_topic_similarity`
+    (returns `0.0` on any failure) so real errors surface; log when a fallback fires.
+  - Add a zero-norm guard to `ProcrustesAligner.get_word_similarity` (it can return
+    `nan` today).
+- **Input validation** — validate constructor and `train`/`fit` inputs (array
+  shapes, positive counts, `n_components` / `n_topics` ranges) so invalid input
+  fails early with a clear message instead of an opaque NumPy/scikit-learn error.
+- **Configurability** — promote the hard-coded minimum-count threshold (`> 5`) in
+  the PPMI kernel to a named constant / parameter.
+- **Determinism** — seed the dense-SVD fallback so embeddings are reproducible.
+- **Tooling** — wire mutation testing into CI (needs `src`-layout configuration for
+  `mutmut`, or an alternative such as `cosmic-ray`).
+- **Coverage** — extend property-based and mutation testing to the Cython PPMI
+  kernel and the NMF topic-alignment path.
+
 ## Contributing
 Pull requests welcome. For major changes, open an issue first.
 
