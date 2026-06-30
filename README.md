@@ -67,6 +67,11 @@ Cython
 The following are known limitations and improvements not yet addressed. They are
 documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 
+- **Python 3.13 support** — `requires-python` is currently `>=3.10,<3.13`, so
+  chronowords cannot be installed on Python 3.13 even though the Cython extension
+  builds and the test suite passes there in downstream (kenon) CI. Lift the cap,
+  add 3.13 to the CI matrix and classifiers, validate against the test suite, and
+  release. This unblocks downstream packages (e.g. kenon) that advertise 3.13.
 - **Robustness / error reporting**
   - `CountMinSketch.estimate_error` currently ignores its `confidence` argument
     (the result depends only on `width` and `total`) — decide the intended bound
