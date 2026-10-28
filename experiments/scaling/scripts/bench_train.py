@@ -36,8 +36,8 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 
 import scipy.sparse.linalg
@@ -235,7 +235,7 @@ def main() -> None:
                 os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9, 1
             ),
         },
-        "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a", encoding="utf-8") as fh:

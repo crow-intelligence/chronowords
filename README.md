@@ -64,7 +64,7 @@ detecting semantic shift across time slices.
 
 ## Requirements
 
-Python ≥ 3.10
+Python ≥ 3.13 (tested on 3.13, 3.14 and 3.15)
 NumPy
 SciPy
 scikit-learn
@@ -77,12 +77,6 @@ Building from source (no wheel for your platform) needs a Rust toolchain
 The following are known limitations and improvements not yet addressed. They are
 documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 
-- **Python 3.13 support** — `requires-python` is currently `>=3.10,<3.13`, so
-  chronowords cannot be installed on Python 3.13. The Rust extension is built
-  against the stable ABI (`abi3-py310`), so one wheel per platform already covers
-  3.13. Lift the cap,
-  add 3.13 to the CI matrix and classifiers, validate against the test suite, and
-  release. This unblocks downstream packages (e.g. kenon) that advertise 3.13.
 - **Robustness / error reporting**
   - `CountMinSketch.estimate_error` currently ignores its `confidence` argument
     (the result depends only on `width` and `total`) — decide the intended bound

@@ -1,12 +1,14 @@
 name: Wheels
 
-# Builds abi3 wheels (one per platform, valid for CPython >= 3.10) and the
-# sdist, and uploads them as workflow artifacts. Nothing is published here.
+# Builds abi3 wheels (one per platform, valid for CPython >= 3.13) and the
+# sdist, and uploads them as workflow artifacts. Nothing is published here;
+# publish.yml calls this workflow and uploads the artifacts to PyPI.
 
 on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   wheels:
@@ -16,8 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64, manylinux: auto }
-          - { os: ubuntu-latest, target: aarch64, manylinux: auto }
+          # manylinux containers carry several Pythons; build against the abi3 floor
+          - { os: ubuntu-latest, target: x86_64, manylinux: auto, interpreter: -i python3.13 }
+          - { os: ubuntu-latest, target: aarch64, manylinux: auto, interpreter: -i python3.13 }
           - { os: macos-latest, target: aarch64 }
           # Intel macOS is cross-compiled on the arm64 runner
           - { os: macos-latest, target: x86_64 }
@@ -27,14 +30,14 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist
+          args: --release --out dist ${{ matrix.interpreter }}
 
       - name: Smoke-test the wheel
         # only where the runner can execute the wheel it built

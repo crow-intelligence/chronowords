@@ -193,7 +193,7 @@ def test_matrix_is_the_pair_counts():
 def test_params_record_the_corpus(tmp_path):
     """The counts carry the parameters and a description of the corpus."""
     f = tmp_path / "c.txt"
-    f.write_text("cat dog\n", encoding="utf-8")
+    f.write_bytes(b"cat dog\n")  # write_text would add \r on Windows
     c = count_cooccurrences(f, min_count=1)
     assert c.params["corpus"] == {
         "kind": "files",

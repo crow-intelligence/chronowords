@@ -607,7 +607,9 @@ class SVDAlgebra:
 
         self._ppmi_sparse = None
         if (path / "ppmi.npz").exists():
-            self._ppmi_sparse = csr_matrix(load_npz(path / "ppmi.npz"))
+            # scipy-stubs 1.18 types the path as a generic alias ty cannot solve
+            npz = load_npz(path / "ppmi.npz")  # ty: ignore[invalid-argument-type]
+            self._ppmi_sparse = csr_matrix(npz)
         elif (path / "ppmi.npy").exists():
             self._ppmi_sparse = csr_matrix(np.load(path / "ppmi.npy"))
         record = path / "training_record.json"

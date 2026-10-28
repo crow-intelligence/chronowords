@@ -18,8 +18,8 @@ import hashlib
 import json
 import sys
 import urllib.request
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 
 
@@ -87,7 +87,7 @@ def download(entry: dict, out_dir: Path) -> None:
                 "url": url,
                 "size": entry["size"],
                 "sha256": sha.hexdigest(),
-                "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
             },
             indent=2,
         )

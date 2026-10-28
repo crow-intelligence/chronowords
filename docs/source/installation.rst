@@ -10,7 +10,7 @@ Install the released package from PyPI:
 chronowords ships a compiled Rust extension (``chronowords._core``). Installing
 from a wheel needs no compiler; building from source (an sdist, a git checkout, or
 a platform without a wheel) needs a Rust toolchain — install it with
-`rustup <https://rustup.rs>`_. Python 3.10–3.12 is supported.
+`rustup <https://rustup.rs>`_. Python 3.13 or newer is required; 3.13, 3.14 and 3.15 are tested.
 
 Install from source
 -------------------

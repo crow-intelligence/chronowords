@@ -26,8 +26,8 @@ import resource
 import subprocess
 import sys
 import time
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import ClassVar
 
@@ -148,7 +148,7 @@ def main() -> None:
             "platform": platform.platform(),
             "cpu_count": os.cpu_count(),
         },
-        "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a", encoding="utf-8") as fh:

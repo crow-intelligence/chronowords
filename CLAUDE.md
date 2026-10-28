@@ -1,6 +1,6 @@
 # chronowords
 
-Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF topic models, and Procrustes alignment across time slices. Rust core (PyO3 + maturin) for counting and PPMI. Python 3.10–3.12.
+Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF topic models, and Procrustes alignment across time slices. Rust core (PyO3 + maturin) for counting and PPMI. Python >= 3.13 (CI: 3.13, 3.14, 3.15).
 
 ## Layout
 
@@ -19,7 +19,7 @@ Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF t
 - **Package management + Python version**: `uv`. Use `uv sync` to install, `uv add <pkg>` / `uv add --group dev <pkg>` for deps, `uv run <cmd>` to execute inside the project env, and `uv python install <ver>` / `uv venv --python <ver>` to pin the interpreter. Do not use pip/poetry/pipenv.
 - **Type checking**: `ty` (Astral). Prefer `uv run ty check` over mypy for new work. Note: the repo currently still wires mypy into pre-commit and CI — when touching type-check config, migrate to `ty` rather than extending the mypy setup.
 - **Testing**: `pytest` + `hypothesis`. Use hypothesis strategies for property-based tests whenever inputs have structure (vectors, matrices, vocabularies, counts). Run with `uv run pytest`. `hypothesis` is not yet a dependency — add it via `uv add --group dev hypothesis` the first time you need it.
-- **Formatting + linting**: `ruff` only (`ruff format` + `ruff check`). Config already lives in `pyproject.toml` under `[tool.ruff]` — respect the existing rule set (line-length 88, target py310, isort force-single-line, `known-first-party = ["chronowords"]`). Do not introduce black, isort, flake8, or pylint.
+- **Formatting + linting**: `ruff` only (`ruff format` + `ruff check`). Config already lives in `pyproject.toml` under `[tool.ruff]` — respect the existing rule set (line-length 88, target py313, isort force-single-line, `known-first-party = ["chronowords"]`). Do not introduce black, isort, flake8, or pylint.
 
 ## Commands
 
