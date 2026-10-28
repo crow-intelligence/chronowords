@@ -52,18 +52,25 @@ they do not grow with the corpus length. The PPMI matrix is sparse; no dense
 ``V x V`` matrix is ever built. ``SVDAlgebra`` keeps only the pairs that can
 receive a PPMI entry.
 
-Measured on a 4-core laptop (default parameters: ``vocab_size=50_000``,
-``min_count=100``, 3 counting threads, other jobs running):
+Measured end to end (``SVDAlgebra.train`` on a ``Path``, including SVD with
+``n_components=100``) on a 4-core, 25 GB laptop, with default parameters
+(``vocab_size=50_000``, ``min_count=100``, 4 threads):
 
-=============================  ==========  =========  ===============  ===========
-corpus                         tokens      counting   distinct pairs   peak memory
-=============================  ==========  =========  ===============  ===========
-Hungarian Wikipedia, 1 GB      102 M       32 s       91.6 M           2.7 GB
-English Wikipedia, 3 GB        405 M       152 s      not measured     2.8 GB
-=============================  ==========  =========  ===============  ===========
+=============================  ==========  =========  =======  ===========
+corpus                         tokens      counting   total    peak memory
+=============================  ==========  =========  =======  ===========
+English Wikipedia, 100 MB      13 M        1.8 s      3.5 s    0.4 GB
+Hungarian Wikipedia, 1 GB      102 M       25 s       33 s     2.2 GB
+English Wikipedia, 1 GB        135 M       25 s       33 s     2.0 GB
+English Wikipedia, 3 GB        405 M       81 s       91 s     3.4 GB
+=============================  ==========  =========  =======  ===========
 
-For comparison, chronowords 0.3 counted the same Hungarian gigabyte in pure
-Python at about 28,000 tokens per second: 61 minutes. It peaked at only 0.74 GB,
+On 1 GB of Hungarian Wikipedia, pass 2 observes 91.6 M distinct vocabulary pairs.
+``SVDAlgebra`` keeps the 8.0 M that can enter PPMI. The scripts and raw records
+are in ``experiments/scaling`` in the repository.
+
+For comparison, chronowords 0.3 trained on the same Hungarian gigabyte in 61
+minutes, counting in pure Python at about 28,000 tokens per second. It peaked at only 0.74 GB,
 because it kept fixed-size Count-Min Sketches and a vocabulary of just 1,084
 words, and its PPMI matrix was dominated by hash-collision artefacts (see
 ``experiments/sketch_accuracy``).

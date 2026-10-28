@@ -93,3 +93,48 @@ What the numbers say:
   hundreds of millions of skip-grams spread over 1M sketch columns, collision counts alone
   clear the `> 5` threshold for most vocabulary pairs. See `experiments/sketch_accuracy` on
   the Rust branch (#11).
+
+## Rust core (0.4, #11–#13)
+
+Recorded by `scripts/bench_exact.py` into `results/exact.jsonl`: `SVDAlgebra.train(Path)` end
+to end, including SVD, with library defaults except `n_components=100` (`counting="exact"`,
+`vocab_size=50_000`, `min_count=100`). Counting runs on 4 threads; nothing else ran on the
+machine. The corpora, slices and tokenisation match the baseline.
+
+| corpus | slice | tokens | total | counting | PPMI | SVD | tokens/s (counting) | peak RSS | vocabulary | PPMI nnz |
+|---|---|---|---|---|---|---|---|---|---|---|
+| presidential | all (23.5 MB) | 3.2 M | 0.8 s | 0.5 s | 0.01 s | 0.3 s | 5,961,968 | 150 MB | 2,851 | 26,947 |
+| huwiki | 10 MB | 1.0 M | 0.6 s | 0.4 s | 0.00 s | 0.3 s | 2,765,198 | 121 MB | 1,235 | 5,583 |
+| huwiki | 100 MB | 10.2 M | 3.8 s | 2.4 s | 0.02 s | 1.5 s | 4,318,716 | 403 MB | 11,976 | 155,887 |
+| huwiki | 1000 MB | 102.3 M | 33.1 s | 24.6 s | 0.26 s | 8.2 s | 4,156,517 | 2223 MB | 50,000 | 1,810,247 |
+| huwiki | all (1.21 GB) | 123.9 M | 41.5 s | 31.4 s | 0.34 s | 9.7 s | 3,946,781 | 2560 MB | 50,000 | 2,108,142 |
+| enwiki | 10 MB | 1.3 M | 0.6 s | 0.3 s | 0.00 s | 0.3 s | 4,725,339 | 108 MB | 1,987 | 11,808 |
+| enwiki | 100 MB | 13.4 M | 3.5 s | 1.8 s | 0.04 s | 1.7 s | 7,507,637 | 372 MB | 12,008 | 176,169 |
+| enwiki | 1000 MB | 135.0 M | 33.0 s | 25.1 s | 0.32 s | 7.6 s | 5,387,800 | 2006 MB | 49,636 | 1,340,171 |
+| enwiki | all (3.00 GB) | 404.6 M | 91.0 s | 80.6 s | 0.77 s | 9.6 s | 5,023,208 | 3393 MB | 50,000 | 2,723,769 |
+
+### Before and after
+
+| corpus | slice | 0.3 (+#10) total | 0.4 total | speed-up | 0.3 peak RSS | 0.4 peak RSS | 0.3 vocabulary | 0.4 vocabulary |
+|---|---|---|---|---|---|---|---|---|
+| presidential | all (23.5 MB) | 2.2 min | 0.8 s | **155×** | 294 MB | 150 MB | 1,318 | 2,851 |
+| huwiki | 10 MB | 42.5 s | 0.6 s | **68×** | 304 MB | 121 MB | 1,225 | 1,235 |
+| huwiki | 100 MB | 6.6 min | 3.8 s | **103×** | 418 MB | 403 MB | 1,122 | 11,976 |
+| huwiki | 1000 MB | 60.6 min | 33.1 s | **110×** | 738 MB | 2223 MB | 1,084 | 50,000 |
+| huwiki | all (1.21 GB) | not run | 41.5 s | — | — | 2560 MB | — | 50,000 |
+| enwiki | 10 MB | 54.3 s | 0.6 s | **92×** | 299 MB | 108 MB | 1,472 | 1,987 |
+| enwiki | 100 MB | 8.3 min | 3.5 s | **140×** | 353 MB | 372 MB | 1,339 | 12,008 |
+| enwiki | 1000 MB | 80.9 min | 33.0 s | **147×** | 492 MB | 2006 MB | 1,340 | 49,636 |
+| enwiki | all (3.00 GB) | not run | 91.0 s | — | — | 3393 MB | — | 50,000 |
+
+- **Speed:** counting runs at 2.7–7.5M tokens/s versus ~26k (small slices are dominated by fixed costs). A gigabyte of Wikipedia now
+  takes about half a minute, a quarter of it SVD.
+- **Memory:** higher than 0.3 at a gigabyte and above, because the model is real and
+  much larger. The vocabulary goes from ~1,100 to 50,000 words (46×), and the PPMI holds
+  observed associations instead of sketch noise. Peak RSS grows sub-linearly: 2.0 GB at 1 GB of English, 3.4 GB
+  at 3 GB.
+- **SVD** (`scipy.sparse.linalg.svds`, unchanged) is now a visible share of the time:
+  8–10 s at 50,000 words.
+- `results/exact_preliminary.jsonl` holds the counting-only measurements taken during
+  development (shared machine, 3 threads). They are kept as the record behind the Phase 3
+  design decisions.
