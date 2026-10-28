@@ -47,6 +47,9 @@ Results append to `results/baseline.jsonl`, one JSON object per run.
 
 Machine: 4 cores, 25 GB RAM, Linux, Python 3.11. Training is single-threaded.
 
+`run_baseline.sh` reproduces the whole series. The recorded runs were launched as
+the same `bench_train.py` invocations in shell loops, one corpus at a time.
+
 ## Reproduce
 
 ```bash
@@ -62,4 +65,31 @@ experiments/scaling/scripts/run_baseline.sh 10 100 1000
 
 ## Results
 
-RESULTS_PLACEHOLDER
+All runs finished with status `ok`. Run on code with the PPMI marginal fix (#10); all
+runs single-threaded. Some runs shared the machine with Rust compilation (at most 2 jobs on
+the other 3 cores), so treat the times as accurate to a few percent.
+
+| corpus | slice | tokens | total | counting | vocab + PPMI | SVD | tokens/s (counting) | peak RSS | vocabulary | PPMI nnz |
+|---|---|---|---|---|---|---|---|---|---|---|
+| presidential | all (23.5 MB) | 3.2 M | 2.2 min | 2.1 min | 2.2 s | 0.4 s | 25,269 | 294 MB | 1,318 | 100,900 |
+| huwiki | 10 MB | 1.0 M | 42.5 s | 39.2 s | 3.0 s | 0.4 s | 25,708 | 304 MB | 1,225 | 32,225 |
+| huwiki | 100 MB | 10.2 M | 6.6 min | 6.5 min | 6.4 s | 1.1 s | 26,174 | 418 MB | 1,122 | 938,088 |
+| huwiki | 1000 MB | 102.3 M | 60.6 min | 60.2 min | 23.5 s | 2.4 s | 28,317 | 738 MB | 1,084 | 931,510 |
+| enwiki | 10 MB | 1.3 M | 54.3 s | 51.4 s | 2.7 s | 0.2 s | 25,743 | 299 MB | 1,472 | 52,181 |
+| enwiki | 100 MB | 13.4 M | 8.3 min | 8.2 min | 4.1 s | 1.4 s | 27,356 | 353 MB | 1,339 | 1,078,769 |
+| enwiki | 1000 MB | 135.0 M | 80.9 min | 80.7 min | 11.0 s | 1.4 s | 27,890 | 492 MB | 1,340 | 1,118,184 |
+
+What the numbers say:
+
+- **Counting is the whole cost, and it is linear.** The Python per-token loop runs at a flat
+  ~25–28k tokens/s regardless of corpus or size: about 1 hour per gigabyte of Hungarian and
+  1 h 20 min per gigabyte of English. Building PPMI and SVD together take under 30 s.
+- **Memory is low because the vocabulary is tiny, not because the design is efficient.** The
+  hidden rule "words above 0.01% of tokens" keeps about 1,100–1,500 words, and the count
+  *shrinks* as the corpus grows (huwiki: 1,225 → 1,122 → 1,084). That is far too small for
+  semantic-shift work on gigabyte corpora.
+- **The PPMI matrix fills with sketch noise.** At 100 MB and above, 62–79% of all V × V cells
+  are nonzero (huwiki 1 GB: 931,510 of 1,175,056; enwiki 1 GB: 1,118,184 of 1,795,600). With
+  hundreds of millions of skip-grams spread over 1M sketch columns, collision counts alone
+  clear the `> 5` threshold for most vocabulary pairs. See `experiments/sketch_accuracy` on
+  the Rust branch (#11).
