@@ -19,7 +19,8 @@ jobs:
           - { os: ubuntu-latest, target: x86_64, manylinux: auto }
           - { os: ubuntu-latest, target: aarch64, manylinux: auto }
           - { os: macos-latest, target: aarch64 }
-          - { os: macos-13, target: x86_64 }
+          # Intel macOS is cross-compiled on the arm64 runner
+          - { os: macos-latest, target: x86_64 }
           - { os: windows-latest, target: x64 }
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +37,8 @@ jobs:
           args: --release --out dist
 
       - name: Smoke-test the wheel
-        if: matrix.target == 'x86_64' || (runner.os == 'macOS' && matrix.target == 'aarch64') || runner.os == 'Windows'
+        # only where the runner can execute the wheel it built
+        if: (runner.os == 'Linux' && matrix.target == 'x86_64') || (runner.os == 'macOS' && matrix.target == 'aarch64') || runner.os == 'Windows'
         shell: bash
         run: |
           python -m pip install dist/*.whl
