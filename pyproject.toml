@@ -13,10 +13,6 @@ keywords = ["nlp", "embeddings", "semantic-change", "topic-modeling"]
 dependencies = [
     "numpy>=1.26.0,<3",
     "scipy>=1.12.0,<2",
-    "cython>=3.0.11,<4",
-    "setuptools>=75.8.0",
-    "mmh3>=5.0.1,<6",
-    "nltk>=3.9.1,<4",
     "scikit-learn>=1.6.1,<2",
 ]
 
@@ -29,6 +25,8 @@ Organization = "https://crowintelligence.org/"
 [dependency-groups]
 dev = [
     "pytest>=8.3.4",
+    "mmh3>=5.0.1,<6",
+    "nltk>=3.9.1,<4",
     "hypothesis>=6.100",
     "requests>=2.32.3",
     "spacy>=3.8.4",
@@ -47,11 +45,13 @@ docs = [
 ]
 
 [build-system]
-requires = ["setuptools>=75.8.0", "wheel", "Cython>=3.0.11", "numpy>=1.26.0"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.maturin]
+python-source = "src"
+module-name = "chronowords._core"
+manifest-path = "rust/Cargo.toml"
 
 [tool.ruff]
 line-length = 88
