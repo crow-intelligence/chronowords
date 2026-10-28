@@ -16,7 +16,7 @@ Detect semantic shifts over time in word embeddings. Train small PPMI-based lang
 - Memory-efficient word embedding training using Count-Min Sketch
 - Topic modeling with Non-negative Matrix Factorization
 - Temporal alignment of word embeddings using Procrustes analysis
-- Cython-optimized PPMI matrix computation
+- Counting and PPMI kernels in Rust (`chronowords._core`, via PyO3/maturin)
 
 ## Installation
 
@@ -60,7 +60,9 @@ Python ≥ 3.10
 NumPy
 SciPy
 scikit-learn
-Cython
+
+Building from source (no wheel for your platform) needs a Rust toolchain
+([rustup](https://rustup.rs)).
 
 ## Roadmap / further work
 
@@ -68,8 +70,9 @@ The following are known limitations and improvements not yet addressed. They are
 documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 
 - **Python 3.13 support** — `requires-python` is currently `>=3.10,<3.13`, so
-  chronowords cannot be installed on Python 3.13 even though the Cython extension
-  builds and the test suite passes there in downstream (kenon) CI. Lift the cap,
+  chronowords cannot be installed on Python 3.13. The Rust extension is built
+  against the stable ABI (`abi3-py310`), so one wheel per platform already covers
+  3.13. Lift the cap,
   add 3.13 to the CI matrix and classifiers, validate against the test suite, and
   release. This unblocks downstream packages (e.g. kenon) that advertise 3.13.
 - **Robustness / error reporting**
@@ -89,8 +92,8 @@ documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 - **Determinism** — seed the dense-SVD fallback so embeddings are reproducible.
 - **Tooling** — wire mutation testing into CI (needs `src`-layout configuration for
   `mutmut`, or an alternative such as `cosmic-ray`).
-- **Coverage** — extend property-based and mutation testing to the Cython PPMI
-  kernel and the NMF topic-alignment path.
+- **Coverage** — extend property-based and mutation testing to the Rust PPMI
+  kernels and the NMF topic-alignment path.
 
 ## Contributing
 Pull requests welcome. For major changes, open an issue first.

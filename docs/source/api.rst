@@ -28,7 +28,7 @@ Count-Min Sketch
    :members:
    :show-inheritance:
 
-PPMI computation (Cython)
-^^^^^^^^^^^^^^^^^^^^^^^^^
+PPMI computation (sketch mode)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autoclass:: chronowords.utils.count_skipgrams.PPMIComputer
    :members:

@@ -14,7 +14,7 @@ from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
-from ..utils.count_skipgrams import PPMIComputer  # ty: ignore
+from ..utils.count_skipgrams import PPMIComputer
 from ..utils.probabilistic_counter import CountMinSketch
 
 
@@ -176,12 +176,14 @@ class SVDAlgebra:
             *overestimate* counts on hash collisions, so a rare word may
             occasionally be admitted to the vocabulary.
 
-            Silenced failure: if sparse :func:`~scipy.sparse.linalg.svds`
+            Swallowed failure: if sparse :func:`~scipy.sparse.linalg.svds`
             raises (common for tiny or degenerate matrices), the error is
-            swallowed and the code falls back to a dense SVD of the matrix
-            *with Gaussian noise (sigma 1e-10) added*. The fallback path is
-            invisible to the caller and yields slightly different,
-            non-deterministic embeddings from the sparse path.
+            caught and the code falls back to a dense SVD of the matrix
+            *with Gaussian noise (sigma 1e-10) added*, which yields slightly
+            different, non-deterministic embeddings from the sparse path. The
+            fallback does not raise; it logs a ``WARNING`` on this module's
+            logger. An empty PPMI matrix (no pair clears the count
+            thresholds) also logs a ``WARNING`` rather than raising.
 
         Examples:
             >>> model = SVDAlgebra(n_components=2)
@@ -233,6 +235,12 @@ class SVDAlgebra:
         )
         M = computer.compute_ppmi_matrix_with_sketch()
         self._ppmi_sparse = M
+        if M.nnz == 0:
+            logger.warning(
+                "PPMI matrix is empty (vocabulary of %d words, no pair passed the "
+                "count thresholds); embeddings will carry no co-occurrence signal",
+                len(self.vocabulary),
+            )
 
         # Use truncated SVD directly on sparse matrix
         k = min(self.n_components, min(M.shape) - 1)
@@ -243,8 +251,13 @@ class SVDAlgebra:
 
         try:
             U, S, _Vt = svds(M_float, k=k)
-        except Exception:
+        except Exception as exc:
             # Fallback to dense SVD for very small/degenerate matrices
+            logger.warning(
+                "Sparse SVD failed (%r); falling back to dense SVD with "
+                "Gaussian noise (sigma 1e-10) — embeddings are not deterministic",
+                exc,
+            )
             M_dense = M.toarray().astype(np.float64)
             M_dense += np.random.normal(0, 1e-10, M_dense.shape)
             U, S, _Vt = np.linalg.svd(M_dense, full_matrices=False)
