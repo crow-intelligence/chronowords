@@ -58,7 +58,7 @@ Measured on a 4-core laptop (default parameters: ``vocab_size=50_000``,
 =============================  ==========  =========  ===============  ===========
 corpus                         tokens      counting   distinct pairs   peak memory
 =============================  ==========  =========  ===============  ===========
-Hungarian Wikipedia, 1 GB      102 M       33 s       91.6 M           3.3 GB
+Hungarian Wikipedia, 1 GB      102 M       32 s       91.6 M           2.7 GB
 English Wikipedia, 3 GB        405 M       152 s      not measured     2.8 GB
 =============================  ==========  =========  ===============  ===========
 

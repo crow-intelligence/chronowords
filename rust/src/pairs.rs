@@ -108,14 +108,17 @@ impl<K: PairKey> PairTable<K> {
         self.shards.iter().any(|s| s.overflow)
     }
 
-    /// Distinct pairs currently held, across shards.
-    pub fn len(&self) -> usize {
-        self.shards.iter().map(|s| s.map.len()).sum()
-    }
-
     /// Drain into sorted COO arrays, keeping pairs with count >= `min_count`.
+    ///
+    /// Shards are freed one by one as they are drained, and the buffer is
+    /// sized to the kept pairs only, so pruning lowers the peak as well.
     pub fn into_coo(self, min_count: u32) -> Coo {
-        let mut v: Vec<(K, u32)> = Vec::with_capacity(self.len());
+        let kept: usize = self
+            .shards
+            .par_iter()
+            .map(|s| s.map.values().filter(|&&c| c >= min_count).count())
+            .sum();
+        let mut v: Vec<(K, u32)> = Vec::with_capacity(kept);
         for shard in self.shards {
             v.extend(shard.map.into_iter().filter(|&(_, c)| c >= min_count));
         }

@@ -24,6 +24,11 @@ use std::io::{Read, Seek, SeekFrom};
 /// Default target chunk size in bytes.
 pub const CHUNK: u64 = 16 << 20;
 
+/// Pair-table shards per worker thread. Each worker fills its shards one at a
+/// time, so at most one shard per thread is resizing at any moment; more,
+/// smaller shards keep that transient (old + new table) small.
+pub const SHARDS_PER_THREAD: usize = 8;
+
 #[derive(Clone, Debug)]
 pub struct Chunk {
     path: usize,
@@ -160,7 +165,7 @@ pub fn count_pairs<K: PairKey>(
     let mut table = PairTable::<K>::new(n_shards);
     let n_shards = table.shards.len() as u32;
     let mut total = 0u64;
-    let wave = (2 * n_shards as usize).max(2);
+    let wave = (2 * rayon::current_num_threads()).max(2);
 
     for group in chunks.chunks(wave) {
         let ids: Vec<ChunkIds> = group

@@ -297,7 +297,7 @@ fn par_pairs<'py, K: pairs::PairKey>(
                 job.vocabulary,
                 job.window,
                 job.tok,
-                rayon::current_num_threads(),
+                rayon::current_num_threads() * parallel::SHARDS_PER_THREAD,
                 job.chunk_bytes,
             )
         })
