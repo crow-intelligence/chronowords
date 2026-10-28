@@ -7,17 +7,26 @@ the documented contracts of each method (see :doc:`api`).
 Training
 --------
 
-``ValueError: No words found meeting minimum frequency threshold``
-   :meth:`~chronowords.algebra.svd.SVDAlgebra.train` builds its vocabulary from
-   words above a 0.01% heavy-hitter threshold. This error means no word cleared
-   it — usually the corpus is empty, far too small, or was already consumed.
+``ValueError: Empty vocabulary: no word occurs at least min_count=100 times``
+   :meth:`~chronowords.algebra.svd.SVDAlgebra.train` keeps the ``vocab_size``
+   most frequent words that occur at least ``min_count`` times (defaults 50,000
+   and 100). The message names the most frequent word and its count.
 
+   - For a small corpus, lower ``min_count`` (``SVDAlgebra(min_count=5)``).
    - Pass a fresh iterable. A generator or file handle is **consumed once**; if
      you iterate it before calling ``train`` (or call ``train`` twice on the same
-     generator), the second pass sees nothing.
-   - Give it more data. The internal PPMI step also requires word and skip-gram
-     counts above 5, so very small corpora can train but yield a near-empty
-     vocabulary.
+     generator), training sees nothing.
+   - The PPMI step also needs word and pair counts above ``ppmi_min_count``
+     (default 5). A corpus can therefore pass the vocabulary rule and still give
+     an empty PPMI matrix, which logs a ``WARNING``.
+
+``TypeError: corpus is a single string``
+   ``train("some text")`` would iterate characters. Pass a list of lines, or a
+   :class:`pathlib.Path` to read a file.
+
+``ValueError: invalid UTF-8`` when training on a file
+   Files are read as strict UTF-8. Re-encode the file (``iconv -f latin1 -t utf-8``)
+   or read it in Python with the right encoding and pass the lines.
 
 ``most_similar`` returns ``[]`` / ``distance`` and ``get_vector`` return ``None``
    The model has not been trained, the word is not in the vocabulary, or the
@@ -26,22 +35,47 @@ Training
    ``len(model.vocabulary)`` and ``word in model.vocabulary`` first.
 
 Results change between identical runs
-   If sparse SVD fails on a small or degenerate matrix,
-   :meth:`~chronowords.algebra.svd.SVDAlgebra.train` silently falls back to a
-   dense SVD **with a tiny amount of random noise added**, so embeddings can vary
-   slightly run-to-run. A larger corpus avoids the fallback path.
+   Training is deterministic on the normal (sparse SVD) path. If sparse SVD fails
+   on a small or degenerate matrix,
+   :meth:`~chronowords.algebra.svd.SVDAlgebra.train` falls back to a dense SVD
+   **with a tiny amount of random noise added**. It logs a ``WARNING`` and sets
+   ``training_record["svd"] == "dense_fallback"``. A larger corpus avoids the
+   fallback path.
 
-Memory and accuracy (Count-Min Sketch)
---------------------------------------
+Memory and time
+---------------
 
-The counter is a :class:`~chronowords.utils.probabilistic_counter.CountMinSketch`
-sized by ``cms_width`` and ``cms_depth``.
+Exact counting (the default) holds one entry per distinct word type in pass 1.
+In pass 2 it holds one 8-byte entry per distinct vocabulary pair. Both grow with
+the vocabulary and the variety of the text and level off as the corpus grows;
+they do not grow with the corpus length. The PPMI matrix is sparse; no dense
+``V x V`` matrix is ever built. ``SVDAlgebra`` keeps only the pairs that can
+receive a PPMI entry.
 
-- **Memory** is ``cms_width * cms_depth * 4`` bytes per sketch. The default
-  ``cms_width=1_000_000`` is ~20 MB per sketch (two are used during training).
-- **Accuracy**: counts are never underestimated but can be *over*-estimated on
-  hash collisions. If rare words leak into the vocabulary, increase ``cms_width``.
-  If memory is tight on a small corpus, lower it.
+Measured on a 4-core laptop (default parameters: ``vocab_size=50_000``,
+``min_count=100``, 3 counting threads, other jobs running):
+
+=============================  ==========  =========  ===============  ===========
+corpus                         tokens      counting   distinct pairs   peak memory
+=============================  ==========  =========  ===============  ===========
+Hungarian Wikipedia, 1 GB      102 M       32 s       91.6 M           2.7 GB
+English Wikipedia, 3 GB        405 M       152 s      not measured     2.8 GB
+=============================  ==========  =========  ===============  ===========
+
+For comparison, chronowords 0.3 counted the same Hungarian gigabyte in pure
+Python at about 28,000 tokens per second: 61 minutes. It peaked at only 0.74 GB,
+because it kept fixed-size Count-Min Sketches and a vocabulary of just 1,084
+words, and its PPMI matrix was dominated by hash-collision artefacts (see
+``experiments/sketch_accuracy``).
+
+``counting="sketch"`` uses two
+:class:`~chronowords.utils.probabilistic_counter.CountMinSketch` tables of
+``cms_width * cms_depth * 4`` bytes each, plus the set of distinct words. Sketch
+counts are never under-estimated, but at the default width they are inflated by
+roughly ``skip-grams / cms_width`` per pair. That is about 18 on a 23 MB corpus,
+enough to put collision artefacts above the PPMI count threshold (see
+``experiments/sketch_accuracy``). Use it only with a ``cms_width`` well above the
+number of skip-grams.
 
 Saving and loading
 ------------------
@@ -104,10 +138,10 @@ Empty or all-zero topics
 Build / install
 ---------------
 
-The Cython extension fails to import
-   ``chronowords.utils.count_skipgrams`` is a compiled Cython module. After
-   editing the ``.pyx`` source, rebuild it with::
+The compiled extension fails to import
+   ``chronowords._core`` is a compiled Rust module (built by maturin). After
+   editing ``rust/src/*.rs``, rebuild it with::
 
       uv sync --reinstall-package chronowords
 
-   A C/C++ compiler must be available on the build machine.
+   Building from source needs a Rust toolchain (``rustup``) on ``PATH``.
