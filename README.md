@@ -13,10 +13,12 @@ Detect semantic shifts over time in word embeddings. Train small PPMI-based lang
 
 ## Features
 
-- Memory-efficient word embedding training using Count-Min Sketch
+- Exact two-pass word and skip-gram counting in a compiled core, on all CPU cores: training on 1 GB of Wikipedia takes about half a minute end to end; 3 GB takes 1.5 minutes in 3.4 GB of RAM on a 4-core laptop (see `experiments/scaling`)
+- Whitespace tokenisation (exactly `str.split()`), Unicode word segmentation (UAX #29), optional lowercasing, or your own pre-tokenised input
+- Optional Count-Min Sketch mode for a fixed counting-memory footprint
 - Topic modeling with Non-negative Matrix Factorization
 - Temporal alignment of word embeddings using Procrustes analysis
-- Cython-optimized PPMI matrix computation
+- Counting and PPMI kernels in Rust (`chronowords._core`, via PyO3/maturin)
 
 ## Installation
 
@@ -26,22 +28,28 @@ pip install chronowords
 
 ## Quick Start
 ```python
+from pathlib import Path
+
 from chronowords.algebra import SVDAlgebra
 from chronowords.topics import TopicModel
 
-# Train word embeddings on any iterable of text lines
-# (a list, a generator, or an open file).
+# Train on a UTF-8 text file, one context per line. Also accepts a list of
+# files, a list of lines, token lists, or any iterable of lines.
+# Keeps the 50,000 most frequent words seen at least 100 times;
+# lower min_count for small corpora.
 model = SVDAlgebra(n_components=300)
-with open("corpus.txt", encoding="utf-8") as fh:
-    model.train(fh)
+model.train(Path("corpus.txt"))
 
 # Find similar words
 for hit in model.most_similar("computer", n=10):
     print(f"{hit.word}: {hit.similarity:.3f}")
 
+# What was counted, with which parameters
+print(model.training_record)
+
 # Topic model over the PPMI matrix that train() computed
 topic_model = TopicModel(n_topics=10)
-topic_model.fit(model._ppmi_sparse, model.vocabulary)
+topic_model.fit(model.ppmi, model.vocabulary)
 topic_model.print_topics()
 ```
 
@@ -60,7 +68,9 @@ Python ≥ 3.10
 NumPy
 SciPy
 scikit-learn
-Cython
+
+Building from source (no wheel for your platform) needs a Rust toolchain
+([rustup](https://rustup.rs)).
 
 ## Roadmap / further work
 
@@ -68,8 +78,9 @@ The following are known limitations and improvements not yet addressed. They are
 documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 
 - **Python 3.13 support** — `requires-python` is currently `>=3.10,<3.13`, so
-  chronowords cannot be installed on Python 3.13 even though the Cython extension
-  builds and the test suite passes there in downstream (kenon) CI. Lift the cap,
+  chronowords cannot be installed on Python 3.13. The Rust extension is built
+  against the stable ABI (`abi3-py310`), so one wheel per platform already covers
+  3.13. Lift the cap,
   add 3.13 to the CI matrix and classifiers, validate against the test suite, and
   release. This unblocks downstream packages (e.g. kenon) that advertise 3.13.
 - **Robustness / error reporting**
@@ -89,8 +100,8 @@ documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 - **Determinism** — seed the dense-SVD fallback so embeddings are reproducible.
 - **Tooling** — wire mutation testing into CI (needs `src`-layout configuration for
   `mutmut`, or an alternative such as `cosmic-ray`).
-- **Coverage** — extend property-based and mutation testing to the Cython PPMI
-  kernel and the NMF topic-alignment path.
+- **Coverage** — extend property-based and mutation testing to the Rust PPMI
+  kernels and the NMF topic-alignment path.
 
 ## Contributing
 Pull requests welcome. For major changes, open an issue first.

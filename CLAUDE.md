@@ -1,14 +1,16 @@
 # chronowords
 
-Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF topic models, and Procrustes alignment across time slices. Cython-accelerated PPMI. Python 3.10–3.12.
+Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF topic models, and Procrustes alignment across time slices. Rust core (PyO3 + maturin) for counting and PPMI. Python 3.10–3.12.
 
 ## Layout
 
-- `src/chronowords/algebra/svd.py` — `SVDAlgebra` (PPMI + truncated SVD embeddings, `most_similar`).
+- `src/chronowords/algebra/svd.py` — `SVDAlgebra` (PPMI + truncated SVD embeddings, `most_similar`). `counting="exact"` (default) or `"sketch"`; vocabulary = top `vocab_size` words with count >= `min_count`; keeps `counts` and `training_record`.
+- `src/chronowords/utils/cooccurrence.py` — `count_cooccurrences` (exact two-pass counting; accepts `Path`/list of paths, lines, token lists, one-shot iterables via a temp spill file) and `ppmi_matrix` (O(nnz)).
 - `src/chronowords/alignment/procrustes.py` — Orthogonal Procrustes alignment between two embedding spaces.
 - `src/chronowords/topics/nmf.py` — `TopicModel` (NMF over PPMI).
 - `src/chronowords/utils/probabilistic_counter.py` — Count-Min Sketch for memory-efficient counting.
-- `src/chronowords/utils/count_skipgrams.pyx` — Cython kernel for skip-gram counts.
+- `src/chronowords/utils/count_skipgrams.py` — `PPMIComputer`, sketch-mode PPMI (wraps the Rust kernel).
+- `rust/src/` — the compiled core, exposed as `chronowords._core` (`murmur.rs` mmh3-compatible hash, `sketch.rs` sketch PPMI, `exact.rs` sequential counting + O(nnz) PPMI, `pairs.rs` sharded pair table with compact u32 keys up to 65,536 words, `parallel.rs` rayon file chunking + parallel passes, `source.rs` file/iterable/spill reading, `tokenize.rs` `str.split()`-compatible or UAX #29 tokenisation). Type stub in `src/chronowords/_core.pyi`.
 - `tests/` — pytest suite mirroring the package layout, with shared fixtures in `tests/conftest.py`.
 - `examples/presidential_speeches.ipynb` — end-to-end usage demo.
 
@@ -35,4 +37,4 @@ uv run ty check src tests   # type-check (preferred)
 - Imports: single-line (`force-single-line = true`), two blank lines after imports.
 - Quotes: double. Don't hand-edit quote style; let `ruff format` own it.
 - Numpy/scipy are core deps; sparse matrices (`scipy.sparse.csr_matrix`) are the expected shape for PPMI.
-- The Cython extension (`count_skipgrams.pyx`) is built via `setup.py` / `build-system` in `pyproject.toml`. Rebuild after edits with `uv sync --reinstall-package chronowords`.
+- The Rust extension is built by maturin (`[tool.maturin]` in `pyproject.toml`, crate in `rust/`). Needs `cargo` on `PATH`. Rebuild after edits with `uv sync --reinstall-package chronowords`; Rust checks: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` (run in `rust/`). Rust kernels must stay bit-compatible with the Python semantics they mirror (`mmh3.hash`, `str.split()`, `len()`, `nltk.util.skipgrams`) — `tests/test_core.py` checks this with Hypothesis.
