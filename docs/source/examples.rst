@@ -27,9 +27,10 @@ Train embeddings and find similar words:
 
    from chronowords.algebra import SVDAlgebra
 
+   from pathlib import Path
+
    model = SVDAlgebra(n_components=300)
-   with open("corpus.txt", encoding="utf-8") as fh:
-       model.train(fh)
+   model.train(Path("corpus.txt"))
 
    for hit in model.most_similar("computer", n=10):
        print(f"{hit.word}: {hit.similarity:.3f}")

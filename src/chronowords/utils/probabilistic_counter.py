@@ -1,5 +1,6 @@
-import mmh3
 import numpy as np
+
+from chronowords._core import murmur3_32
 
 
 class CountMinSketch:
@@ -64,8 +65,9 @@ class CountMinSketch:
 
     def _hash_indices(self, key: bytes) -> np.ndarray:
         """Compute hash indices for all rows at once."""
+        # murmur3_32 is bit-identical to mmh3.hash (signed); % is floor modulo.
         return np.array(
-            [mmh3.hash(key, seed) % self.width for seed in self.seeds],
+            [murmur3_32(key, seed) % self.width for seed in self.seeds],
             dtype=np.intp,
         )
 
