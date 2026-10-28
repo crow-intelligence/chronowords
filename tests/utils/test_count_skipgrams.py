@@ -6,7 +6,7 @@ from hypothesis import given
 from hypothesis import settings
 from nltk.util import skipgrams
 
-from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
+from chronowords.utils.count_skipgrams import PPMIComputer
 from chronowords.utils.probabilistic_counter import CountMinSketch
 from tests.strategies import ppmi_inputs
 
@@ -15,8 +15,8 @@ from tests.strategies import ppmi_inputs
 def ppmi_computer():
     """Create a PPMIComputer instance with toy corpus data."""
     rng = np.random.default_rng(0)
-    skipgram_counts = rng.integers(0, 10, size=(3, 10), dtype=np.int32)
-    word_counts = rng.integers(0, 10, size=(3, 10), dtype=np.int32)
+    skipgram_counts = rng.integers(0, 10, size=(3, 10)).astype(np.int32)
+    word_counts = rng.integers(0, 10, size=(3, 10)).astype(np.int32)
     seeds = [12345, 67890, 11111]
 
     return PPMIComputer(
@@ -127,7 +127,7 @@ def test_ppmi_invalid_seeds():
             skipgram_counts=counts,
             word_counts=counts,
             vocabulary=["a"],
-            seeds=[1.5, 2.0, 3.0],
+            seeds=[1.5, 2.0, 3.0],  # ty: ignore[invalid-argument-type]
             width=10,
             skip_total=1.0,
             word_total=1.0,

@@ -104,10 +104,10 @@ Empty or all-zero topics
 Build / install
 ---------------
 
-The Cython extension fails to import
-   ``chronowords.utils.count_skipgrams`` is a compiled Cython module. After
-   editing the ``.pyx`` source, rebuild it with::
+The compiled extension fails to import
+   ``chronowords._core`` is a compiled Rust module (built by maturin). After
+   editing ``rust/src/*.rs``, rebuild it with::
 
       uv sync --reinstall-package chronowords
 
-   A C/C++ compiler must be available on the build machine.
+   Building from source needs a Rust toolchain (``rustup``) on ``PATH``.

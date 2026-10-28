@@ -14,7 +14,7 @@ from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
-from ..utils.count_skipgrams import PPMIComputer  # ty: ignore
+from ..utils.count_skipgrams import PPMIComputer
 from ..utils.probabilistic_counter import CountMinSketch
 
 

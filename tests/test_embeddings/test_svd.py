@@ -8,7 +8,7 @@ from hypothesis import strategies as st
 from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
-from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
+from chronowords.utils.count_skipgrams import PPMIComputer
 from tests.strategies import trainable_corpus
 
 
