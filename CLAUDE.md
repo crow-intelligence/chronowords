@@ -4,7 +4,8 @@ Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF t
 
 ## Layout
 
-- `src/chronowords/algebra/svd.py` — `SVDAlgebra` (PPMI + truncated SVD embeddings, `most_similar`).
+- `src/chronowords/algebra/svd.py` — `SVDAlgebra` (PPMI + truncated SVD embeddings, `most_similar`). `counting="exact"` (default) or `"sketch"`; vocabulary = top `vocab_size` words with count >= `min_count`; keeps `counts` and `training_record`.
+- `src/chronowords/utils/cooccurrence.py` — `count_cooccurrences` (exact two-pass counting; accepts `Path`/list of paths, lines, token lists, one-shot iterables via a temp spill file) and `ppmi_matrix` (O(nnz)).
 - `src/chronowords/alignment/procrustes.py` — Orthogonal Procrustes alignment between two embedding spaces.
 - `src/chronowords/topics/nmf.py` — `TopicModel` (NMF over PPMI).
 - `src/chronowords/utils/probabilistic_counter.py` — Count-Min Sketch for memory-efficient counting.

@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from collections.abc import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -18,13 +19,27 @@ def sketch_ppmi(
     alpha: float,
     start: int,
     end: int,
+    min_count: int = 5,
 ) -> _Coo: ...
+
+_WordCounts = tuple[list[str], NDArray[np.int64], int]
+_PairCounts = tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64], int]
+
 def count_words(
-    lines: Iterable[str], min_word_length: int
-) -> tuple[list[str], NDArray[np.int64], int]: ...
+    corpus: Iterable[str] | Iterable[Sequence[str]],
+    min_word_length: int,
+    spill_path: str | None = None,
+) -> _WordCounts: ...
+def count_words_files(paths: list[str], min_word_length: int) -> _WordCounts: ...
 def count_pairs(
-    lines: Iterable[str], vocabulary: list[str], window: int, min_word_length: int
-) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64], int]: ...
+    corpus: Iterable[str] | Iterable[Sequence[str]],
+    vocabulary: list[str],
+    window: int,
+    min_word_length: int,
+) -> _PairCounts: ...
+def count_pairs_files(
+    paths: list[str], vocabulary: list[str], window: int, min_word_length: int
+) -> _PairCounts: ...
 def ppmi_from_counts(
     rows: NDArray[np.int64],
     cols: NDArray[np.int64],

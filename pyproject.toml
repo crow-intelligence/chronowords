@@ -13,8 +13,6 @@ keywords = ["nlp", "embeddings", "semantic-change", "topic-modeling"]
 dependencies = [
     "numpy>=1.26.0,<3",
     "scipy>=1.12.0,<2",
-    "mmh3>=5.0.1,<6",
-    "nltk>=3.9.1,<4",
     "scikit-learn>=1.6.1,<2",
 ]
 
@@ -27,6 +25,8 @@ Organization = "https://crowintelligence.org/"
 [dependency-groups]
 dev = [
     "pytest>=8.3.4",
+    "mmh3>=5.0.1,<6",
+    "nltk>=3.9.1,<4",
     "hypothesis>=6.100",
     "requests>=2.32.3",
     "spacy>=3.8.4",

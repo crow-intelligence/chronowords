@@ -13,7 +13,8 @@ Detect semantic shifts over time in word embeddings. Train small PPMI-based lang
 
 ## Features
 
-- Memory-efficient word embedding training using Count-Min Sketch
+- Exact two-pass word and skip-gram counting in a compiled core: files are read directly, memory grows with the vocabulary rather than the corpus length
+- Optional Count-Min Sketch mode for a fixed counting-memory footprint
 - Topic modeling with Non-negative Matrix Factorization
 - Temporal alignment of word embeddings using Procrustes analysis
 - Counting and PPMI kernels in Rust (`chronowords._core`, via PyO3/maturin)
@@ -26,22 +27,28 @@ pip install chronowords
 
 ## Quick Start
 ```python
+from pathlib import Path
+
 from chronowords.algebra import SVDAlgebra
 from chronowords.topics import TopicModel
 
-# Train word embeddings on any iterable of text lines
-# (a list, a generator, or an open file).
+# Train on a UTF-8 text file, one context per line. Also accepts a list of
+# files, a list of lines, token lists, or any iterable of lines.
+# Keeps the 50,000 most frequent words seen at least 100 times;
+# lower min_count for small corpora.
 model = SVDAlgebra(n_components=300)
-with open("corpus.txt", encoding="utf-8") as fh:
-    model.train(fh)
+model.train(Path("corpus.txt"))
 
 # Find similar words
 for hit in model.most_similar("computer", n=10):
     print(f"{hit.word}: {hit.similarity:.3f}")
 
+# What was counted, with which parameters
+print(model.training_record)
+
 # Topic model over the PPMI matrix that train() computed
 topic_model = TopicModel(n_topics=10)
-topic_model.fit(model._ppmi_sparse, model.vocabulary)
+topic_model.fit(model.ppmi, model.vocabulary)
 topic_model.print_topics()
 ```
 

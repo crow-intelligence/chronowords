@@ -19,7 +19,8 @@ class PPMIComputer:
 
     The PPMI for a word pair ``(a, b)`` is ``max(0, log(P(a,b) / (P(a)^alpha *
     P(b))) - log(shift))``, where probabilities come from the sketch counts.
-    Both words and the pair must have a sketch count strictly greater than 5,
+    Both words and the pair must have a sketch count strictly greater than
+    ``min_count`` (default 5),
     and only strictly-positive PMI values are retained, so the result is
     sparse and non-negative.
 
@@ -66,6 +67,7 @@ class PPMIComputer:
         word_total: float,
         shift: float = 1.0,
         alpha: float = 0.75,
+        min_count: int = 5,
     ) -> None:
         """Initialize the PPMI computer with Count-Min Sketch data.
 
@@ -88,6 +90,8 @@ class PPMIComputer:
                 shift). Must be > 0.
             alpha: Context-distribution smoothing exponent applied to the focus
                 word's marginal. Default 0.75.
+            min_count: Words and pairs need a sketch count strictly greater
+                than this to receive an entry. Default 5.
 
         Raises:
             ValueError: If any element of ``seeds`` is not an ``int``
@@ -120,6 +124,7 @@ class PPMIComputer:
         self.word_total = word_total
         self.shift = shift
         self.alpha = alpha
+        self.min_count = min_count
 
     def compute_ppmi_batch(
         self, start_idx: int, end_idx: int
@@ -161,6 +166,7 @@ class PPMIComputer:
             float(self.alpha),
             start_idx,
             end_idx,
+            self.min_count,
         )
 
     def compute_ppmi_matrix_with_sketch(self, batch_size: int = 1024) -> csr_matrix:

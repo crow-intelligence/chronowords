@@ -7,8 +7,6 @@
 use crate::murmur::sketch_index;
 use numpy::ndarray::ArrayView2;
 
-/// Strictly-greater-than threshold on sketch counts, as in the Cython kernel.
-pub const MIN_COUNT: i32 = 5;
 pub const EPS: f64 = 1e-10;
 
 fn min_count(table: &ArrayView2<i32>, key: &[u8], seeds: &[u32], width: usize) -> i32 {
@@ -32,6 +30,8 @@ pub struct SketchInputs<'a> {
     pub word_total: f64,
     pub shift: f64,
     pub alpha: f64,
+    /// Words and pairs need a sketch count strictly greater than this.
+    pub min_count: i32,
 }
 
 /// Raw marginal P(w) per vocabulary word, or 0.0 when its count is <= 5.
@@ -40,7 +40,7 @@ pub fn word_probabilities(inp: &SketchInputs) -> Vec<f64> {
         .iter()
         .map(|w| {
             let c = min_count(&inp.word_counts, w.as_bytes(), inp.seeds, inp.width);
-            if c > MIN_COUNT {
+            if c > inp.min_count {
                 c as f64 / inp.word_total
             } else {
                 0.0
@@ -73,7 +73,7 @@ pub fn ppmi_rows(inp: &SketchInputs, start: usize, end: usize) -> (Vec<f64>, Vec
             key.push(b'#');
             key.extend_from_slice(inp.vocabulary[j].as_bytes());
             let pair = min_count(&inp.skipgram_counts, &key, inp.seeds, inp.width);
-            if pair <= MIN_COUNT {
+            if pair <= inp.min_count {
                 continue;
             }
             let pb = pj + EPS;

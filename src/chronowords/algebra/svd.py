@@ -1,24 +1,80 @@
 """SVD-based word embedding implementation with memory-efficient counting."""
 
+import json
 import logging
 import pickle
-from collections.abc import Generator
+from collections.abc import Iterable
+from collections.abc import Iterator
+from collections.abc import Sequence
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version
 from pathlib import Path
+from typing import Any
+from typing import Literal
+from typing import cast
 
 import numpy as np
-from nltk.util import skipgrams
 from numpy.typing import NDArray
 from scipy.sparse import csr_matrix
+from scipy.sparse import load_npz
 from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
+from ..utils.cooccurrence import CooccurrenceCounts
+from ..utils.cooccurrence import Corpus
+from ..utils.cooccurrence import _describe
+from ..utils.cooccurrence import _paths
+from ..utils.cooccurrence import count_cooccurrences
+from ..utils.cooccurrence import ppmi_matrix
 from ..utils.count_skipgrams import PPMIComputer
 from ..utils.probabilistic_counter import CountMinSketch
 
 
 logger = logging.getLogger(__name__)
+
+
+def _version() -> str | None:
+    try:
+        return version("chronowords")
+    except PackageNotFoundError:
+        return None
+
+
+def _token_lists(corpus: Corpus, min_word_length: int) -> Iterator[list[str]]:
+    """Yield the kept tokens of each corpus line (sketch mode, pure Python).
+
+    Mirrors the compiled core's reading rules: files are UTF-8 with universal
+    newlines, ``str`` lines are split like ``str.split()``, token sequences
+    are taken as given but must not contain whitespace.
+    """
+    if isinstance(corpus, str | bytes):
+        raise TypeError(
+            "corpus is a single string; pass an iterable of lines, or a "
+            "pathlib.Path for a file"
+        )
+    paths = _paths(corpus)
+    if paths is not None:
+        for p in paths:
+            with Path(p).open(encoding="utf-8") as fh:
+                for line in fh:
+                    yield [w for w in line.split() if len(w) >= min_word_length]
+        return
+    items = cast("Iterable[str] | Iterable[Sequence[str]]", corpus)
+    for item in items:
+        if isinstance(item, str):
+            tokens = item.split()
+        else:
+            tokens = list(item)
+            for t in tokens:
+                if not isinstance(t, str):
+                    raise TypeError(f"token {t!r} is not a str")
+                if t.split() != [t]:
+                    raise ValueError(
+                        f"pre-tokenised token {t!r} is empty or contains whitespace"
+                    )
+        yield [w for w in tokens if len(w) >= min_word_length]
 
 
 @dataclass
@@ -74,9 +130,11 @@ class AnalogyResult:
 class SVDAlgebra:
     """Implements word vector algebra using SVD-based embeddings.
 
-    Builds PPMI-weighted word embeddings from a corpus via truncated SVD,
-    using a Count-Min Sketch for memory-efficient counting and a
-    Cython-optimized PPMI kernel.
+    Builds PPMI-weighted word embeddings from a corpus via truncated SVD. By
+    default every word and skip-gram is counted exactly, in two passes, by the
+    compiled core (:func:`~chronowords.utils.cooccurrence.count_cooccurrences`);
+    ``counting="sketch"`` instead uses Count-Min Sketches with a fixed memory
+    footprint and approximate (over-estimated) counts.
 
     The model has a two-phase lifecycle: it is unusable until :meth:`train`
     (or :meth:`load_model`) has populated ``vocabulary`` and ``embeddings``.
@@ -100,28 +158,48 @@ class SVDAlgebra:
         min_word_length: int = 3,
         cms_width: int = 1_000_000,
         cms_depth: int = 5,
+        *,
+        vocab_size: int | None = 50_000,
+        min_count: int = 100,
+        counting: Literal["exact", "sketch"] = "exact",
+        shift: float = 1.0,
+        alpha: float = 0.75,
+        ppmi_min_count: int = 5,
     ) -> None:
         """Initialize SVDAlgebra.
 
         Args:
             n_components: Number of SVD components (embedding dimensions) to
                 keep. During :meth:`train` this is clamped to
-                ``min(n_components, min(matrix.shape) - 1)`` and floored at 1,
-                so a value larger than the vocabulary yields fewer dimensions.
-            window_size: Skip-gram context window size.
-            min_word_length: Minimum word length to consider; shorter tokens
-                are dropped during training.
-            cms_width: Width of the Count-Min Sketch tables. Larger values
-                reduce count collisions at the cost of memory
-                (``cms_width * cms_depth * 4`` bytes per sketch).
-            cms_depth: Number of hash functions (rows) in the Count-Min Sketch.
+                ``min(n_components, vocabulary size - 1)`` and floored at 1.
+                Default 300.
+            window_size: Skip-gram window; each token pairs with the next
+                ``window_size + 1`` tokens. Default 5.
+            min_word_length: Tokens shorter than this many code points are
+                dropped before counting. Default 3.
+            cms_width: Count-Min Sketch width; ``counting="sketch"`` only.
+                Memory is ``cms_width * cms_depth * 4`` bytes per sketch.
+                Default 1,000,000.
+            cms_depth: Count-Min Sketch depth; ``counting="sketch"`` only.
+                Default 5.
+            vocab_size: Keep at most this many words, most frequent first,
+                ties alphabetical; ``None`` for no cap. Default 50,000.
+            min_count: Keep only words occurring at least this many times.
+                Default 100. Lower it for small corpora.
+            counting: ``"exact"`` (default) counts exactly in two passes;
+                ``"sketch"`` uses Count-Min Sketches. Sketch counts
+                over-estimate, by roughly ``skip-grams / cms_width`` per
+                pair, and the sketch PPMI kernel costs O(V^2) lookups.
+            shift: PMI shift; ``log(shift)`` is subtracted from every PMI.
+                Default 1.0 (no shift).
+            alpha: Context-distribution smoothing exponent, applied to the
+                focus word's probability only. Default 0.75.
+            ppmi_min_count: A word and a pair both need a count strictly
+                greater than this to receive a PPMI entry. Default 5.
 
-        Note:
-            Constructor arguments are stored without validation. The integer
-            arguments are assumed positive; non-positive values surface later
-            as errors from NumPy allocation (``cms_width``/``cms_depth``) or
-            from :func:`scipy.sparse.linalg.svds` (``n_components``) during
-            :meth:`train`, not here.
+        Raises:
+            ValueError: If a parameter is out of range or ``counting`` is not
+                ``"exact"`` or ``"sketch"``.
 
         Examples:
             >>> model = SVDAlgebra(n_components=100)
@@ -129,111 +207,129 @@ class SVDAlgebra:
             100
             >>> model.embeddings is None
             True
+            >>> SVDAlgebra(counting="approximate")
+            Traceback (most recent call last):
+            ...
+            ValueError: counting must be 'exact' or 'sketch', got 'approximate'
 
         """
+        if counting not in ("exact", "sketch"):
+            raise ValueError(f"counting must be 'exact' or 'sketch', got {counting!r}")
+        for name, value, low in (
+            ("n_components", n_components, 1),
+            ("window_size", window_size, 0),
+            ("min_word_length", min_word_length, 0),
+            ("cms_width", cms_width, 1),
+            ("cms_depth", cms_depth, 1),
+            ("min_count", min_count, 1),
+            ("ppmi_min_count", ppmi_min_count, 0),
+        ):
+            if value < low:
+                raise ValueError(f"{name} must be >= {low}, got {value}")
+        if vocab_size is not None and vocab_size < 1:
+            raise ValueError(f"vocab_size must be >= 1 or None, got {vocab_size}")
+        if shift <= 0:
+            raise ValueError(f"shift must be > 0, got {shift}")
+
         self.n_components = n_components
         self.window_size = window_size
         self.min_word_length = min_word_length
         self.cms_width = cms_width
         self.cms_depth = cms_depth
+        self.vocab_size = vocab_size
+        self.min_count = min_count
+        self.counting = counting
+        self.shift = shift
+        self.alpha = alpha
+        self.ppmi_min_count = ppmi_min_count
 
         self.vocabulary: list[str] = []
         self._vocab_index: dict[str, int] = {}
         self.embeddings: NDArray[np.float64] | None = None
         self._ppmi_sparse: csr_matrix | None = None
-        # Keep M_dense for backward compatibility with notebook code
-        self.M_dense: np.ndarray | None = None
+        self.counts: CooccurrenceCounts | None = None
+        self.training_record: dict[str, Any] | None = None
+
+    @property
+    def ppmi(self) -> csr_matrix | None:
+        """The sparse PPMI matrix from the last :meth:`train`, or ``None``.
+
+        Rows and columns follow ``vocabulary``. Restored by :meth:`load_model`
+        when the model directory contains it.
+        """
+        return self._ppmi_sparse
+
+    def _params(self) -> dict[str, Any]:
+        return {
+            "n_components": self.n_components,
+            "window_size": self.window_size,
+            "min_word_length": self.min_word_length,
+            "vocab_size": self.vocab_size,
+            "min_count": self.min_count,
+            "counting": self.counting,
+            "cms_width": self.cms_width,
+            "cms_depth": self.cms_depth,
+            "shift": self.shift,
+            "alpha": self.alpha,
+            "ppmi_min_count": self.ppmi_min_count,
+        }
 
     def _build_vocab_index(self) -> None:
         """Build dict index for O(1) vocabulary lookups."""
         self._vocab_index = {w: i for i, w in enumerate(self.vocabulary)}
 
-    def train(self, corpus: Generator[str, None, None]) -> None:
+    def train(self, corpus: Corpus) -> None:
         """Train the model on a text corpus.
 
-        Counts words and skip-grams with a Count-Min Sketch, builds the
-        vocabulary from words above a fixed frequency threshold, computes a
-        sparse PPMI matrix, and factorises it with truncated SVD. On success,
-        populates ``vocabulary``, ``embeddings``, ``_ppmi_sparse`` and
-        ``M_dense``.
+        Counts words and skip-grams, keeps the vocabulary (the ``vocab_size``
+        most frequent words with at least ``min_count`` occurrences, ties
+        alphabetical), computes a sparse PPMI matrix and factorises it with
+        truncated SVD. On success, populates ``vocabulary``, ``embeddings``,
+        ``ppmi`` and ``training_record``; with ``counting="exact"`` also
+        ``counts`` (the exact counts behind the PPMI matrix).
 
         Args:
-            corpus: Iterable of text lines (e.g. a generator). Each line is
-                split on whitespace; tokens shorter than ``min_word_length``
-                are discarded.
+            corpus: A :class:`pathlib.Path` or list of paths (UTF-8 text
+                files), or an iterable of ``str`` lines, or an iterable of
+                token sequences (pre-tokenised input). Lines are split on
+                whitespace exactly like ``str.split()``. See
+                :func:`~chronowords.utils.cooccurrence.count_cooccurrences`
+                for how each form is read; a single-use iterable is copied to
+                a temporary file in exact mode.
 
         Raises:
-            ValueError: If no word clears the 0.01% heavy-hitter frequency
-                threshold, i.e. the corpus is empty or too small to build a
-                vocabulary (explicit check after counting).
+            ValueError: If no word reaches ``min_count`` (an empty corpus, an
+                exhausted iterator, or ``min_count`` too high for the corpus).
+            TypeError: If ``corpus`` is a bare ``str``.
 
         Note:
-            Precondition: ``corpus`` is consumed exactly once; passing a
-            single-use iterator that has already been exhausted produces an
-            empty vocabulary and raises ``ValueError``.
-
-            Words are frequency-filtered by a Count-Min Sketch, which can
-            *overestimate* counts on hash collisions, so a rare word may
-            occasionally be admitted to the vocabulary.
-
             Swallowed failure: if sparse :func:`~scipy.sparse.linalg.svds`
             raises (common for tiny or degenerate matrices), the error is
             caught and the code falls back to a dense SVD of the matrix
             *with Gaussian noise (sigma 1e-10) added*, which yields slightly
             different, non-deterministic embeddings from the sparse path. The
             fallback does not raise; it logs a ``WARNING`` on this module's
-            logger. An empty PPMI matrix (no pair clears the count
-            thresholds) also logs a ``WARNING`` rather than raising.
+            logger and is recorded in ``training_record["svd"]``. An empty
+            PPMI matrix also logs a ``WARNING`` rather than raising.
+
+            The sparse SVD starts from a fixed, seeded vector, so repeated
+            training on the same corpus gives the same embeddings.
 
         Examples:
-            >>> model = SVDAlgebra(n_components=2)
-            >>> text = ["the cat sat", "the dog ran"]
-            >>> model.train(line for line in text)
-            >>> len(model.vocabulary) > 0
-            True
-            >>> model.embeddings is not None
-            True
+            >>> model = SVDAlgebra(n_components=2, min_count=1)
+            >>> model.train(["the cat sat", "the dog ran"])
+            >>> model.vocabulary
+            ['the', 'cat', 'dog', 'ran', 'sat']
+            >>> model.embeddings.shape
+            (5, 2)
+            >>> model.training_record["word_total"]
+            6
 
         """
-        word_counter = CountMinSketch(self.cms_width, self.cms_depth)
-        skipgram_counter = CountMinSketch(
-            self.cms_width, self.cms_depth, track_keys=False
-        )
-
-        logger.info("Counting words and skipgrams...")
-
-        for line in corpus:
-            words = [w for w in line.split() if len(w) >= self.min_word_length]
-            for word in words:
-                word_counter.update(word)
-            skips = skipgrams(words, 2, self.window_size)
-            for w1, w2 in skips:
-                skipgram_counter.update(f"{w1}#{w2}")
-
-        logger.info("Building vocabulary...")
-        vocab_candidates = word_counter.get_heavy_hitters(0.0001)
-        self.vocabulary = [word for word, count in vocab_candidates]
-
-        if not self.vocabulary:
-            raise ValueError("No words found meeting minimum frequency threshold")
-
-        self._build_vocab_index()
-
-        word_counts, word_seeds, width = word_counter.arrays
-        skipgram_counts, _, _ = skipgram_counter.arrays
-
-        computer = PPMIComputer(
-            skipgram_counts=skipgram_counts,
-            word_counts=word_counts,
-            vocabulary=self.vocabulary,
-            seeds=word_seeds,
-            width=width,
-            skip_total=float(skipgram_counter.total),
-            word_total=float(word_counter.total),
-            shift=1.0,
-            alpha=0.75,
-        )
-        M = computer.compute_ppmi_matrix_with_sketch()
+        if self.counting == "exact":
+            M, record = self._exact_ppmi(corpus)
+        else:
+            M, record = self._sketch_ppmi(corpus)
         self._ppmi_sparse = M
         if M.nnz == 0:
             logger.warning(
@@ -242,15 +338,12 @@ class SVDAlgebra:
                 len(self.vocabulary),
             )
 
-        # Use truncated SVD directly on sparse matrix
-        k = min(self.n_components, min(M.shape) - 1)
-        if k < 1:
-            k = 1
-
+        k = max(1, min(self.n_components, min(M.shape) - 1))
         M_float = M.astype(np.float64)
-
+        svd_path = "sparse"
         try:
-            U, S, _Vt = svds(M_float, k=k)
+            v0 = np.random.default_rng(0).uniform(-1.0, 1.0, size=min(M.shape))
+            U, S, _Vt = svds(M_float, k=k, v0=v0)
         except Exception as exc:
             # Fallback to dense SVD for very small/degenerate matrices
             logger.warning(
@@ -258,6 +351,7 @@ class SVDAlgebra:
                 "Gaussian noise (sigma 1e-10) — embeddings are not deterministic",
                 exc,
             )
+            svd_path = "dense_fallback"
             M_dense = M.toarray().astype(np.float64)
             M_dense += np.random.normal(0, 1e-10, M_dense.shape)
             U, S, _Vt = np.linalg.svd(M_dense, full_matrices=False)
@@ -268,22 +362,104 @@ class SVDAlgebra:
         idx = np.argsort(S)[::-1]
         U = U[:, idx].astype(np.float64)
         S = S[idx].astype(np.float64)
-
         self.embeddings = (U * np.sqrt(S)).astype(np.float64)
 
-        # Keep M_dense for backward compatibility (lazy — only computed when accessed)
-        self.M_dense = M.toarray().astype(np.float64)
-
+        self.training_record = {
+            "chronowords_version": _version(),
+            "params": self._params(),
+            **record,
+            "vocab_size": len(self.vocabulary),
+            "ppmi_nnz": int(M.nnz),
+            "n_components_used": k,
+            "svd": svd_path,
+        }
         logger.info("Final embeddings shape: %s", self.embeddings.shape)
-        logger.info("Embeddings non-zeros: %d", np.count_nonzero(self.embeddings))
-        norms = np.linalg.norm(self.embeddings, axis=1)
-        logger.info("Min norm: %f", float(np.min(norms)))
+
+    def _exact_ppmi(self, corpus: Corpus) -> tuple[csr_matrix, dict[str, Any]]:
+        logger.info("Counting words and skipgrams...")
+        counts = count_cooccurrences(
+            corpus,
+            window_size=self.window_size,
+            min_word_length=self.min_word_length,
+            vocab_size=self.vocab_size,
+            min_count=self.min_count,
+        )
+        logger.info("Building vocabulary...")
+        self.counts = counts
+        self.vocabulary = counts.vocabulary
+        self._build_vocab_index()
+        M = ppmi_matrix(
+            counts, shift=self.shift, alpha=self.alpha, min_count=self.ppmi_min_count
+        )
+        record = {
+            "corpus": counts.params["corpus"],
+            "word_total": counts.word_total,
+            "skip_total": counts.skip_total,
+            "n_types": counts.n_types,
+            "pairs_observed": len(counts.pair_counts),
+        }
+        return M, record
+
+    def _sketch_ppmi(self, corpus: Corpus) -> tuple[csr_matrix, dict[str, Any]]:
+        word_counter = CountMinSketch(self.cms_width, self.cms_depth)
+        skipgram_counter = CountMinSketch(
+            self.cms_width, self.cms_depth, track_keys=False
+        )
+        span = self.window_size + 2
+
+        logger.info("Counting words and skipgrams...")
+        for words in _token_lists(corpus, self.min_word_length):
+            for word in words:
+                word_counter.update(word)
+            n = len(words)
+            for i in range(n):
+                for j in range(i + 1, min(n, i + span)):
+                    skipgram_counter.update(f"{words[i]}#{words[j]}")
+
+        logger.info("Building vocabulary...")
+        estimates = sorted(
+            word_counter.get_heavy_hitters(0.0), key=lambda wc: (-wc[1], wc[0])
+        )
+        vocab = [w for w, c in estimates if c >= self.min_count]
+        if self.vocab_size is not None:
+            vocab = vocab[: self.vocab_size]
+        if not vocab:
+            raise ValueError(
+                f"Empty vocabulary: no word occurs at least min_count="
+                f"{self.min_count} times. Lower min_count for small corpora."
+            )
+        self.counts = None
+        self.vocabulary = vocab
+        self._build_vocab_index()
+
+        word_counts, word_seeds, width = word_counter.arrays
+        skipgram_counts, _, _ = skipgram_counter.arrays
+        M = PPMIComputer(
+            skipgram_counts=skipgram_counts,
+            word_counts=word_counts,
+            vocabulary=self.vocabulary,
+            seeds=word_seeds,
+            width=width,
+            skip_total=float(skipgram_counter.total),
+            word_total=float(word_counter.total),
+            shift=self.shift,
+            alpha=self.alpha,
+            min_count=self.ppmi_min_count,
+        ).compute_ppmi_matrix_with_sketch()
+        record = {
+            "corpus": _describe(corpus, _paths(corpus)),
+            "word_total": word_counter.total,
+            "skip_total": skipgram_counter.total,
+            "counts_are_estimates": True,
+        }
+        return M, record
 
     def save_model(self, path: str | Path) -> None:
         """Save model embeddings and vocabulary to disk.
 
-        Writes up to four files into ``path``: ``ppmi.npz`` (sparse PPMI),
-        ``ppmi.npy`` (dense PPMI), ``embeddings.npy``, and ``vocabulary.pkl``.
+        Writes into ``path``: ``embeddings.npy``, ``vocabulary.pkl``,
+        ``ppmi.npz`` (sparse PPMI) and ``training_record.json``, each only
+        when the corresponding attribute is set.
 
         Args:
             path: Directory to write model files to. Created (including
@@ -295,12 +471,10 @@ class SVDAlgebra:
                 ``np.save`` / ``open``.
 
         Note:
-            Only attributes that are currently set are written: each of the
-            PPMI matrices and ``embeddings`` is saved only when not
-            ``None``. Calling this before :meth:`train` therefore writes a
-            ``vocabulary.pkl`` holding an empty list and no ``embeddings.npy``,
-            which makes the resulting directory unloadable by
-            :meth:`load_model`. No warning is emitted for a partial save.
+            Calling this before :meth:`train` writes a ``vocabulary.pkl``
+            holding an empty list and no ``embeddings.npy``, which makes the
+            resulting directory unloadable by :meth:`load_model`. No warning
+            is emitted for a partial save. Exact ``counts`` are not saved.
 
         Examples:
             >>> import tempfile
@@ -308,12 +482,10 @@ class SVDAlgebra:
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["cat", "dog"]
             >>> model.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
-            >>> model.M_dense = np.array([[1.0, 0.0], [0.0, 1.0]])
             >>> with tempfile.TemporaryDirectory() as tmpdir:
             ...     model.save_model(tmpdir)
-            ...     saved_files = list(Path(tmpdir).glob("*"))
-            ...     len(saved_files) > 0
-            True
+            ...     sorted(p.name for p in Path(tmpdir).glob("*"))
+            ['embeddings.npy', 'vocabulary.pkl']
 
         """
         path = Path(path)
@@ -321,19 +493,21 @@ class SVDAlgebra:
 
         if self._ppmi_sparse is not None:
             save_npz(path / "ppmi.npz", self._ppmi_sparse)
-        if self.M_dense is not None:
-            np.save(path / "ppmi.npy", self.M_dense)
         if self.embeddings is not None:
             np.save(path / "embeddings.npy", self.embeddings)
+        if self.training_record is not None:
+            (path / "training_record.json").write_text(
+                json.dumps(self.training_record, indent=2) + "\n", encoding="utf-8"
+            )
         with Path.open(path / "vocabulary.pkl", "wb") as f:
             pickle.dump(self.vocabulary, f)
 
     def load_model(self, path: str | Path) -> None:
         """Load model embeddings and vocabulary from disk.
 
-        Restores ``embeddings``, ``vocabulary`` and (if present) ``M_dense``
-        from a directory previously written by :meth:`save_model`, and rebuilds
-        the vocabulary index.
+        Restores ``embeddings`` and ``vocabulary``, plus ``ppmi`` and
+        ``training_record`` when present, from a directory written by
+        :meth:`save_model`, and rebuilds the vocabulary index.
 
         Args:
             path: Directory containing the saved model files.
@@ -342,9 +516,7 @@ class SVDAlgebra:
             ValueError: If ``path`` is not an existing directory (explicit
                 check).
             FileNotFoundError: If ``embeddings.npy`` or ``vocabulary.pkl`` is
-                missing from ``path`` (implicit, from ``np.load`` / ``open``) —
-                e.g. when the directory came from a pre-training
-                :meth:`save_model`.
+                missing from ``path`` (implicit, from ``np.load`` / ``open``).
             pickle.UnpicklingError: If ``vocabulary.pkl`` is corrupt.
 
         Warning:
@@ -353,9 +525,9 @@ class SVDAlgebra:
             from sources you trust.
 
         Note:
-            ``ppmi.npy`` is restored only if present; ``ppmi.npz`` (the sparse
-            PPMI matrix) is not reloaded, so ``_ppmi_sparse`` stays ``None``
-            after loading.
+            Directories saved by chronowords < 0.4 may hold a dense
+            ``ppmi.npy`` instead of ``ppmi.npz``; it is read and converted to
+            a sparse matrix. ``counts`` is never restored (it is not saved).
 
         Examples:
             >>> import tempfile
@@ -363,26 +535,33 @@ class SVDAlgebra:
             >>> model = SVDAlgebra(n_components=2)
             >>> model.vocabulary = ["cat", "dog"]
             >>> model.embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
-            >>> model.M_dense = np.array([[1.0, 0.0], [0.0, 1.0]])
             >>> with tempfile.TemporaryDirectory() as tmpdir:
             ...     model.save_model(tmpdir)
             ...     new_model = SVDAlgebra(n_components=2)
             ...     new_model.load_model(tmpdir)
-            ...     len(new_model.vocabulary) == len(model.vocabulary)
-            True
+            ...     new_model.vocabulary
+            ['cat', 'dog']
 
         """
         path = Path(path)
         if not path.is_dir():
             raise ValueError(f"Directory not found: {path}")
 
-        ppmi_npy = path / "ppmi.npy"
-        if ppmi_npy.exists():
-            self.M_dense = np.load(ppmi_npy)
         self.embeddings = np.load(path / "embeddings.npy")
         with Path.open(path / "vocabulary.pkl", "rb") as f:
             self.vocabulary = pickle.load(f)
         self._build_vocab_index()
+
+        self._ppmi_sparse = None
+        if (path / "ppmi.npz").exists():
+            self._ppmi_sparse = csr_matrix(load_npz(path / "ppmi.npz"))
+        elif (path / "ppmi.npy").exists():
+            self._ppmi_sparse = csr_matrix(np.load(path / "ppmi.npy"))
+        record = path / "training_record.json"
+        self.training_record = (
+            json.loads(record.read_text(encoding="utf-8")) if record.exists() else None
+        )
+        self.counts = None
 
     def get_vector(self, word: str) -> NDArray[np.float64] | None:
         """Get the embedding vector for a word.

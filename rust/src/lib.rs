@@ -6,12 +6,12 @@
 mod exact;
 mod murmur;
 mod sketch;
+mod source;
 mod tokenize;
 
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::pybacked::PyBackedStr;
 
 type Coo<'py> = (
     Bound<'py, PyArray1<f64>>,
@@ -40,7 +40,7 @@ fn murmur3_32(key: &[u8], seed: u32) -> i32 {
 /// PPMI COO entries for focus words ``[start, end)`` from Count-Min Sketch tables.
 #[pyfunction]
 #[pyo3(signature = (skipgram_counts, word_counts, vocabulary, seeds, width,
-                    skip_total, word_total, shift, alpha, start, end))]
+                    skip_total, word_total, shift, alpha, start, end, min_count=5))]
 #[allow(clippy::too_many_arguments)]
 fn sketch_ppmi<'py>(
     py: Python<'py>,
@@ -55,6 +55,7 @@ fn sketch_ppmi<'py>(
     alpha: f64,
     start: usize,
     end: usize,
+    min_count: i32,
 ) -> PyResult<Coo<'py>> {
     let (skip, word) = (skipgram_counts.as_array(), word_counts.as_array());
     require(width > 0, "width must be positive")?;
@@ -79,30 +80,95 @@ fn sketch_ppmi<'py>(
         word_total,
         shift,
         alpha,
+        min_count,
     };
     let out = py.detach(|| sketch::ppmi_rows(&inp, start, end));
     Ok(coo(py, out))
 }
 
-/// Exact token counts over an iterable of lines.
-///
-/// Returns ``(words, counts, total)`` with words sorted by descending count
-/// (ties alphabetical) and ``total`` the number of kept tokens.
-#[pyfunction]
-fn count_words<'py>(
-    py: Python<'py>,
-    lines: &Bound<'py, PyAny>,
-    min_word_length: usize,
-) -> PyResult<(Vec<String>, Bound<'py, PyArray1<i64>>, u64)> {
-    let mut wc = exact::WordCounter::default();
-    for line in lines.try_iter()? {
-        let line: PyBackedStr = line?.extract()?;
-        wc.add_line(&line, min_word_length);
-    }
+type WordCounts<'py> = (Vec<String>, Bound<'py, PyArray1<i64>>, u64);
+type PairCounts<'py> = (
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    u64,
+);
+
+fn word_counts_out(py: Python<'_>, wc: exact::WordCounter) -> WordCounts<'_> {
     let total = wc.total;
     let (words, counts): (Vec<String>, Vec<i64>) =
         wc.sorted().into_iter().map(|(w, c)| (w, c as i64)).unzip();
-    Ok((words, counts.into_pyarray(py), total))
+    (words, counts.into_pyarray(py), total)
+}
+
+fn pair_counts_out(py: Python<'_>, pc: exact::PairCounter) -> PairCounts<'_> {
+    let total = pc.total;
+    let (r, c, n) = pc.into_coo();
+    (
+        r.into_pyarray(py),
+        c.into_pyarray(py),
+        n.into_pyarray(py),
+        total,
+    )
+}
+
+fn pair_counter(
+    vocabulary: &[String],
+    window: usize,
+    min_len: usize,
+) -> PyResult<exact::PairCounter> {
+    let unique: rustc_hash::FxHashSet<&str> = vocabulary.iter().map(String::as_str).collect();
+    require(
+        unique.len() == vocabulary.len(),
+        "vocabulary contains duplicates",
+    )?;
+    Ok(exact::PairCounter::new(vocabulary, window, min_len))
+}
+
+/// Exact token counts over a Python iterable of lines or token lists.
+///
+/// Returns ``(words, counts, total)`` with words sorted by descending count
+/// (ties alphabetical) and ``total`` the number of kept tokens. If
+/// ``spill_path`` is given, every item is also written there as one line, so
+/// a single-use iterator can be counted a second time from disk.
+#[pyfunction]
+#[pyo3(signature = (corpus, min_word_length, spill_path=None))]
+fn count_words<'py>(
+    py: Python<'py>,
+    corpus: &Bound<'py, PyAny>,
+    min_word_length: usize,
+    spill_path: Option<String>,
+) -> PyResult<WordCounts<'py>> {
+    let mut wc = exact::WordCounter::default();
+    let mut spill = spill_path
+        .as_deref()
+        .map(source::Spill::create)
+        .transpose()?;
+    source::for_each_py_line(corpus, |line| {
+        wc.add_line(line, min_word_length);
+        if let Some(s) = spill.as_mut() {
+            s.write_line(line)?;
+        }
+        Ok(())
+    })?;
+    if let Some(s) = spill {
+        s.finish()?;
+    }
+    Ok(word_counts_out(py, wc))
+}
+
+/// Exact token counts over UTF-8 text files (universal newlines). Releases the GIL.
+#[pyfunction]
+fn count_words_files(
+    py: Python<'_>,
+    paths: Vec<String>,
+    min_word_length: usize,
+) -> PyResult<WordCounts<'_>> {
+    let wc = py.detach(|| {
+        let mut wc = exact::WordCounter::default();
+        source::for_each_file_line(&paths, |line| wc.add_line(line, min_word_length)).map(|_| wc)
+    })?;
+    Ok(word_counts_out(py, wc))
 }
 
 /// Exact directional skip-gram counts between vocabulary words.
@@ -111,37 +177,33 @@ fn count_words<'py>(
 /// vocabulary position, sorted by row then column, and the total number of
 /// skip-grams in the corpus (including pairs with out-of-vocabulary words).
 #[pyfunction]
-#[allow(clippy::type_complexity)]
 fn count_pairs<'py>(
     py: Python<'py>,
-    lines: &Bound<'py, PyAny>,
+    corpus: &Bound<'py, PyAny>,
     vocabulary: Vec<String>,
     window: usize,
     min_word_length: usize,
-) -> PyResult<(
-    Bound<'py, PyArray1<i64>>,
-    Bound<'py, PyArray1<i64>>,
-    Bound<'py, PyArray1<i64>>,
-    u64,
-)> {
-    let unique: rustc_hash::FxHashSet<&str> = vocabulary.iter().map(String::as_str).collect();
-    require(
-        unique.len() == vocabulary.len(),
-        "vocabulary contains duplicates",
-    )?;
-    let mut pc = exact::PairCounter::new(&vocabulary, window, min_word_length);
-    for line in lines.try_iter()? {
-        let line: PyBackedStr = line?.extract()?;
-        pc.add_line(&line);
-    }
-    let total = pc.total;
-    let (r, c, n) = pc.into_coo();
-    Ok((
-        r.into_pyarray(py),
-        c.into_pyarray(py),
-        n.into_pyarray(py),
-        total,
-    ))
+) -> PyResult<PairCounts<'py>> {
+    let mut pc = pair_counter(&vocabulary, window, min_word_length)?;
+    source::for_each_py_line(corpus, |line| {
+        pc.add_line(line);
+        Ok(())
+    })?;
+    Ok(pair_counts_out(py, pc))
+}
+
+/// As ``count_pairs``, reading UTF-8 text files. Releases the GIL.
+#[pyfunction]
+fn count_pairs_files(
+    py: Python<'_>,
+    paths: Vec<String>,
+    vocabulary: Vec<String>,
+    window: usize,
+    min_word_length: usize,
+) -> PyResult<PairCounts<'_>> {
+    let mut pc = pair_counter(&vocabulary, window, min_word_length)?;
+    py.detach(|| source::for_each_file_line(&paths, |line| pc.add_line(line)))?;
+    Ok(pair_counts_out(py, pc))
 }
 
 /// PPMI COO entries from exact pair and word counts, in O(nnz).
@@ -195,7 +257,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(murmur3_32, m)?)?;
     m.add_function(wrap_pyfunction!(sketch_ppmi, m)?)?;
     m.add_function(wrap_pyfunction!(count_words, m)?)?;
+    m.add_function(wrap_pyfunction!(count_words_files, m)?)?;
     m.add_function(wrap_pyfunction!(count_pairs, m)?)?;
+    m.add_function(wrap_pyfunction!(count_pairs_files, m)?)?;
     m.add_function(wrap_pyfunction!(ppmi_from_counts, m)?)?;
     Ok(())
 }

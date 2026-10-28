@@ -28,6 +28,11 @@ Count-Min Sketch
    :members:
    :show-inheritance:
 
+Exact counting and PPMI
+^^^^^^^^^^^^^^^^^^^^^^^
+.. automodule:: chronowords.utils.cooccurrence
+   :members:
+
 PPMI computation (sketch mode)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autoclass:: chronowords.utils.count_skipgrams.PPMIComputer

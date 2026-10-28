@@ -367,8 +367,6 @@ name = "chronowords"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
-    { name = "mmh3" },
-    { name = "nltk" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -381,6 +379,8 @@ dependencies = [
 dev = [
     { name = "altair" },
     { name = "hypothesis" },
+    { name = "mmh3" },
+    { name = "nltk" },
     { name = "notebook" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -403,8 +403,6 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mmh3", specifier = ">=5.0.1,<6" },
-    { name = "nltk", specifier = ">=3.9.1,<4" },
     { name = "numpy", specifier = ">=1.26.0,<3" },
     { name = "scikit-learn", specifier = ">=1.6.1,<2" },
     { name = "scipy", specifier = ">=1.12.0,<2" },
@@ -414,6 +412,8 @@ requires-dist = [
 dev = [
     { name = "altair", specifier = ">=5.5.0" },
     { name = "hypothesis", specifier = ">=6.100" },
+    { name = "mmh3", specifier = ">=5.0.1,<6" },
+    { name = "nltk", specifier = ">=3.9.1,<4" },
     { name = "notebook", specifier = ">=7.3.2" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pre-commit", specifier = ">=4.1.0" },
