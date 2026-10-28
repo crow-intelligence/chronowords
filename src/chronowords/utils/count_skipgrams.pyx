@@ -114,31 +114,35 @@ cdef class PPMIComputer:
         self.initialized = False
         self.word_probs = vector[double]()
 
-    cdef int _get_min_count(self, bytes word_bytes) except -1:
-        """Return the Count-Min Sketch estimate for ``word_bytes``.
+    cdef int _get_min_count(
+        self, bytes key, np.ndarray[DTYPE_t, ndim=2] counts
+    ) except -1:
+        """Return the Count-Min Sketch estimate for ``key`` in ``counts``.
 
         Hashes the key with each row seed and returns the minimum count across
         rows — the standard CMS point query, which never underestimates the
-        true count.
+        true count. ``counts`` must be the table the key was counted into:
+        ``word_counts`` for single words, ``skipgram_counts`` for
+        ``"w1#w2"`` pairs.
         """
         cdef:
             int i, idx, min_count
-            int depth = self.skipgram_counts.shape[0]
-            np.ndarray[DTYPE_t, ndim=2] counts = self.skipgram_counts
+            int depth = counts.shape[0]
 
         min_count = 0x7FFFFFFF
 
         for i in range(depth):
-            idx = mmh3.hash(word_bytes, self.seeds[i]) % self.width
+            idx = mmh3.hash(key, self.seeds[i]) % self.width
             if counts[i, idx] < min_count:
                 min_count = counts[i, idx]
 
         return min_count
 
-    cdef void _precompute_word_probabilities(self):
+    cdef int _precompute_word_probabilities(self) except -1:
         """Pre-compute per-word marginal probabilities into ``word_probs``.
 
-        For each vocabulary word, queries the sketch and stores
+        For each vocabulary word, queries the *word* sketch
+        (``word_counts``) and stores
         ``count / word_total`` if the count is strictly greater than 5,
         otherwise 0.0. A stored probability of 0.0 marks the word as too rare
         and excludes it from all PPMI pairs.
@@ -153,11 +157,13 @@ cdef class PPMIComputer:
 
         for i in range(n):
             word_bytes = self.vocabulary[i].encode()
-            count = self._get_min_count(word_bytes)
+            count = self._get_min_count(word_bytes, self.word_counts)
             if count > 5:  # Minimum count threshold
                 self.word_probs[i] = count / self.word_total  # Store raw probability
             else:
                 self.word_probs[i] = 0.0
+
+        return 0
 
     def compute_ppmi_batch(self, int start_idx, int end_idx):
         """Compute PPMI entries for focus words in ``[start_idx, end_idx)``.
@@ -202,7 +208,9 @@ cdef class PPMIComputer:
                     continue
 
                 skipgram_key = f"{self.vocabulary[i]}#{self.vocabulary[j]}".encode()
-                pair_count = self._get_min_count(skipgram_key)
+                pair_count = self._get_min_count(
+                    skipgram_key, self.skipgram_counts
+                )
 
                 if pair_count <= 5:  # Minimum count threshold
                     continue

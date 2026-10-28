@@ -27,6 +27,9 @@ Documentation = "https://chronowords.readthedocs.io/en/latest/"
 Organization = "https://crowintelligence.org/"
 
 [dependency-groups]
+bench = [
+    "pyarrow>=25.0.1",
+]
 dev = [
     "pytest>=8.3.4",
     "hypothesis>=6.100",
