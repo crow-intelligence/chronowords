@@ -42,13 +42,31 @@ Results change between identical runs
    ``training_record["svd"] == "dense_fallback"``. A larger corpus avoids the
    fallback path.
 
-Memory
-------
+Memory and time
+---------------
 
-Exact counting (the default) holds one entry per distinct word type, plus one
-per distinct vocabulary pair that occurs in the corpus. Its memory grows with
-the vocabulary and the variety of the text, not with the corpus length. The PPMI
-matrix is sparse; no dense ``V x V`` matrix is ever built.
+Exact counting (the default) holds one entry per distinct word type in pass 1.
+In pass 2 it holds one 8-byte entry per distinct vocabulary pair. Both grow with
+the vocabulary and the variety of the text and level off as the corpus grows;
+they do not grow with the corpus length. The PPMI matrix is sparse; no dense
+``V x V`` matrix is ever built. ``SVDAlgebra`` keeps only the pairs that can
+receive a PPMI entry.
+
+Measured on a 4-core laptop (default parameters: ``vocab_size=50_000``,
+``min_count=100``, 3 counting threads, other jobs running):
+
+=============================  ==========  =========  ===============  ===========
+corpus                         tokens      counting   distinct pairs   peak memory
+=============================  ==========  =========  ===============  ===========
+Hungarian Wikipedia, 1 GB      102 M       33 s       91.6 M           3.3 GB
+English Wikipedia, 3 GB        405 M       152 s      not measured     2.8 GB
+=============================  ==========  =========  ===============  ===========
+
+For comparison, chronowords 0.3 counted the same Hungarian gigabyte in pure
+Python at about 28,000 tokens per second: 61 minutes. It peaked at only 0.74 GB,
+because it kept fixed-size Count-Min Sketches and a vocabulary of just 1,084
+words, and its PPMI matrix was dominated by hash-collision artefacts (see
+``experiments/sketch_accuracy``).
 
 ``counting="sketch"`` uses two
 :class:`~chronowords.utils.probabilistic_counter.CountMinSketch` tables of

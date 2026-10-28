@@ -11,7 +11,9 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+#[cfg(test)]
+use std::io::{BufRead, BufReader};
+use std::io::{BufWriter, Write};
 
 #[derive(Debug)]
 pub enum SourceError {
@@ -28,7 +30,9 @@ impl From<SourceError> for PyErr {
     }
 }
 
-/// Call `f` on every line of every file, in order.
+/// Call `f` on every line of every file, in order. The sequential reference
+/// for `parallel::for_each_chunk_line`, kept for tests.
+#[cfg(test)]
 pub fn for_each_file_line(paths: &[String], mut f: impl FnMut(&str)) -> Result<(), SourceError> {
     let mut buf = Vec::with_capacity(1 << 16);
     for path in paths {
@@ -90,8 +94,12 @@ fn item_to_line(item: &Bound<'_, PyAny>, scratch: &mut String) -> PyResult<Optio
 }
 
 /// Call `f` on every item of a Python iterable, as a line of text.
+///
+/// Token sequences are joined with spaces, so they are only read verbatim by
+/// the whitespace tokenizer; with `allow_token_lists == false` they raise.
 pub fn for_each_py_line(
     corpus: &Bound<'_, PyAny>,
+    allow_token_lists: bool,
     mut f: impl FnMut(&str) -> PyResult<()>,
 ) -> PyResult<()> {
     if corpus.extract::<PyBackedStr>().is_ok() {
@@ -103,7 +111,12 @@ pub fn for_each_py_line(
     for item in corpus.try_iter()? {
         match item_to_line(&item?, &mut scratch)? {
             Some(line) => f(&line)?,
-            None => f(&scratch)?,
+            None if allow_token_lists => f(&scratch)?,
+            None => {
+                return Err(PyValueError::new_err(
+                    "pre-tokenised input is used verbatim; it requires tokenizer=\"whitespace\"",
+                ))
+            }
         }
     }
     Ok(())

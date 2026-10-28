@@ -22,6 +22,7 @@ from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
+from .. import _core
 from ..utils.cooccurrence import CooccurrenceCounts
 from ..utils.cooccurrence import Corpus
 from ..utils.cooccurrence import _describe
@@ -42,39 +43,61 @@ def _version() -> str | None:
         return None
 
 
-def _token_lists(corpus: Corpus, min_word_length: int) -> Iterator[list[str]]:
-    """Yield the kept tokens of each corpus line (sketch mode, pure Python).
+def _token_lists(
+    corpus: Corpus,
+    min_word_length: int,
+    tokenizer: str = "whitespace",
+    lowercase: bool = False,
+) -> Iterator[list[str]]:
+    """Yield the kept tokens of each corpus line (sketch mode).
 
     Mirrors the compiled core's reading rules: files are UTF-8 with universal
-    newlines, ``str`` lines are split like ``str.split()``, token sequences
-    are taken as given but must not contain whitespace.
+    newlines; ``str`` lines are tokenised exactly as the exact path does
+    (``str.split()`` here, or ``_core.tokenize`` for other settings); token
+    sequences are taken verbatim, must not contain whitespace, and require
+    ``tokenizer="whitespace"``.
     """
     if isinstance(corpus, str | bytes):
         raise TypeError(
             "corpus is a single string; pass an iterable of lines, or a "
             "pathlib.Path for a file"
         )
+    plain = tokenizer == "whitespace" and not lowercase
+
+    def split(line: str) -> list[str]:
+        if plain:
+            return [w for w in line.split() if len(w) >= min_word_length]
+        return _core.tokenize(line, min_word_length, tokenizer, lowercase)
+
     paths = _paths(corpus)
     if paths is not None:
         for p in paths:
             with Path(p).open(encoding="utf-8") as fh:
                 for line in fh:
-                    yield [w for w in line.split() if len(w) >= min_word_length]
+                    yield split(line)
         return
     items = cast("Iterable[str] | Iterable[Sequence[str]]", corpus)
     for item in items:
         if isinstance(item, str):
-            tokens = item.split()
+            yield split(item)
+            continue
+        if tokenizer != "whitespace":
+            raise ValueError(
+                'pre-tokenised input is used verbatim; it requires tokenizer="whitespace"'
+            )
+        tokens = list(item)
+        for t in tokens:
+            if not isinstance(t, str):
+                raise TypeError(f"token {t!r} is not a str")
+            if t.split() != [t]:
+                raise ValueError(
+                    f"pre-tokenised token {t!r} is empty or contains whitespace"
+                )
+        if lowercase:
+            # same Unicode lowercasing as the exact path
+            yield _core.tokenize(" ".join(tokens), min_word_length, "whitespace", True)
         else:
-            tokens = list(item)
-            for t in tokens:
-                if not isinstance(t, str):
-                    raise TypeError(f"token {t!r} is not a str")
-                if t.split() != [t]:
-                    raise ValueError(
-                        f"pre-tokenised token {t!r} is empty or contains whitespace"
-                    )
-        yield [w for w in tokens if len(w) >= min_word_length]
+            yield [w for w in tokens if len(w) >= min_word_length]
 
 
 @dataclass
@@ -165,6 +188,9 @@ class SVDAlgebra:
         shift: float = 1.0,
         alpha: float = 0.75,
         ppmi_min_count: int = 5,
+        tokenizer: Literal["whitespace", "unicode"] = "whitespace",
+        lowercase: bool = False,
+        n_threads: int | None = None,
     ) -> None:
         """Initialize SVDAlgebra.
 
@@ -196,10 +222,16 @@ class SVDAlgebra:
                 focus word's probability only. Default 0.75.
             ppmi_min_count: A word and a pair both need a count strictly
                 greater than this to receive a PPMI entry. Default 5.
+            tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or
+                ``"unicode"`` (UAX #29 words, punctuation dropped). See
+                :func:`~chronowords.utils.cooccurrence.count_cooccurrences`.
+            lowercase: Lowercase tokens before counting. Default ``False``.
+            n_threads: Threads for counting file input; ``None`` (default)
+                uses one per CPU core. Does not affect results.
 
         Raises:
-            ValueError: If a parameter is out of range or ``counting`` is not
-                ``"exact"`` or ``"sketch"``.
+            ValueError: If a parameter is out of range, or ``counting`` or
+                ``tokenizer`` is not one of its documented values.
 
         Examples:
             >>> model = SVDAlgebra(n_components=100)
@@ -215,6 +247,10 @@ class SVDAlgebra:
         """
         if counting not in ("exact", "sketch"):
             raise ValueError(f"counting must be 'exact' or 'sketch', got {counting!r}")
+        if tokenizer not in ("whitespace", "unicode"):
+            raise ValueError(
+                f"tokenizer must be 'whitespace' or 'unicode', got {tokenizer!r}"
+            )
         for name, value, low in (
             ("n_components", n_components, 1),
             ("window_size", window_size, 0),
@@ -226,6 +262,8 @@ class SVDAlgebra:
         ):
             if value < low:
                 raise ValueError(f"{name} must be >= {low}, got {value}")
+        if n_threads is not None and n_threads < 1:
+            raise ValueError(f"n_threads must be >= 1 or None, got {n_threads}")
         if vocab_size is not None and vocab_size < 1:
             raise ValueError(f"vocab_size must be >= 1 or None, got {vocab_size}")
         if shift <= 0:
@@ -242,6 +280,9 @@ class SVDAlgebra:
         self.shift = shift
         self.alpha = alpha
         self.ppmi_min_count = ppmi_min_count
+        self.tokenizer: Literal["whitespace", "unicode"] = tokenizer
+        self.lowercase = lowercase
+        self.n_threads = n_threads
 
         self.vocabulary: list[str] = []
         self._vocab_index: dict[str, int] = {}
@@ -272,6 +313,9 @@ class SVDAlgebra:
             "shift": self.shift,
             "alpha": self.alpha,
             "ppmi_min_count": self.ppmi_min_count,
+            "tokenizer": self.tokenizer,
+            "lowercase": self.lowercase,
+            "n_threads": self.n_threads,
         }
 
     def _build_vocab_index(self) -> None:
@@ -286,7 +330,9 @@ class SVDAlgebra:
         alphabetical), computes a sparse PPMI matrix and factorises it with
         truncated SVD. On success, populates ``vocabulary``, ``embeddings``,
         ``ppmi`` and ``training_record``; with ``counting="exact"`` also
-        ``counts`` (the exact counts behind the PPMI matrix).
+        ``counts``, the exact counts behind the PPMI matrix. ``counts`` holds
+        only pairs observed more than ``ppmi_min_count`` times, the only ones
+        that can receive a PPMI entry; the totals include all pairs.
 
         Args:
             corpus: A :class:`pathlib.Path` or list of paths (UTF-8 text
@@ -383,6 +429,11 @@ class SVDAlgebra:
             min_word_length=self.min_word_length,
             vocab_size=self.vocab_size,
             min_count=self.min_count,
+            tokenizer=self.tokenizer,
+            lowercase=self.lowercase,
+            # pairs at or below the PPMI threshold can never get an entry
+            min_pair_count=self.ppmi_min_count + 1,
+            n_threads=self.n_threads,
         )
         logger.info("Building vocabulary...")
         self.counts = counts
@@ -408,7 +459,9 @@ class SVDAlgebra:
         span = self.window_size + 2
 
         logger.info("Counting words and skipgrams...")
-        for words in _token_lists(corpus, self.min_word_length):
+        for words in _token_lists(
+            corpus, self.min_word_length, self.tokenizer, self.lowercase
+        ):
             for word in words:
                 word_counter.update(word)
             n = len(words)

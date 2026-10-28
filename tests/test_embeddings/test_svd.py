@@ -507,3 +507,22 @@ def test_load_model_reads_legacy_dense_ppmi(tmp_path):
     assert model.ppmi.nnz == 1
     assert model.ppmi[0, 1] == 1.5
     assert model.training_record is None
+
+
+def test_sketch_mode_tokenises_like_exact_mode():
+    """With the Unicode tokenizer and lowercasing, both modes see the same tokens."""
+    raw = [line.upper() + " !!" for line in SIGNAL_CORPUS]
+    kw: dict[str, Any] = {
+        "n_components": 3,
+        "min_count": 1,
+        "tokenizer": "unicode",
+        "lowercase": True,
+    }
+    exact = SVDAlgebra(**kw)
+    sketch = SVDAlgebra(counting="sketch", cms_width=200_000, **kw)
+    exact.train(raw)
+    sketch.train(raw)
+    assert exact.vocabulary == sketch.vocabulary
+    assert "king" in exact.vocabulary
+    assert exact.ppmi is not None and sketch.ppmi is not None
+    np.testing.assert_allclose(sketch.ppmi.toarray(), exact.ppmi.toarray(), rtol=1e-12)

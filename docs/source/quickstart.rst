@@ -74,6 +74,19 @@ A generator or an open file handle also works. It is read once and copied to a
 temporary file for the second pass, so it needs free disk space about the size
 of the corpus.
 
+Files are counted on all CPU cores (``n_threads=None``); pass ``n_threads=2``
+to leave cores free. The thread count never changes the counts.
+
+Raw text with punctuation? Instead of preprocessing it in Python, let the core
+segment it into Unicode words (UAX #29) and lowercase it::
+
+   model = SVDAlgebra(tokenizer="unicode", lowercase=True)
+
+That drops punctuation and keeps ``can't`` and ``3.14`` whole. The default,
+``tokenizer="whitespace"``, splits exactly like ``str.split()``, which is what
+lemmatised or otherwise pre-processed text needs. Both choices change the
+vocabulary, so they are recorded in ``training_record["params"]``.
+
 Query the embeddings
 --------------------
 

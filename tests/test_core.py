@@ -115,7 +115,12 @@ def test_count_pairs_is_additive_over_line_shards(a, b, window):
 def test_ppmi_from_counts_golden_cell():
     """Six ``cat dog`` lines: PPMI(cat, dog) = 1.75 * ln 2 (hand-computed)."""
     data, rows, cols = _core.ppmi_from_counts(
-        np.array([0]), np.array([1]), np.array([6]), np.array([6, 6]), 12.0, 6.0
+        np.array([0], dtype=np.int32),
+        np.array([1], dtype=np.int32),
+        np.array([6]),
+        np.array([6, 6]),
+        12.0,
+        6.0,
     )
     assert rows.tolist() == [0] and cols.tolist() == [1]
     # the formula's 1e-10 epsilons move the value by ~3e-10
@@ -251,8 +256,8 @@ def test_count_pairs_rejects_duplicate_vocabulary():
 def test_ppmi_from_counts_fails_loudly(kwargs, match):
     """Degenerate totals and out-of-range indices raise ``ValueError``."""
     args: dict[str, Any] = {
-        "rows": np.array([0]),
-        "cols": np.array([1]),
+        "rows": np.array([0], dtype=np.int32),
+        "cols": np.array([1], dtype=np.int32),
         "pair_counts": np.array([6]),
         "word_counts": np.array([6, 6]),
         "word_total": 12.0,

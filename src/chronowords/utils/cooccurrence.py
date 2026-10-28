@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 from typing import Any
+from typing import Literal
 from typing import cast
 
 import numpy as np
@@ -39,15 +40,15 @@ class CooccurrenceCounts:
             counts.
         word_counts: Corpus count of each vocabulary word (int64, parallel to
             ``vocabulary``).
-        pair_rows: Vocabulary index of the focus word of each observed pair.
-        pair_cols: Vocabulary index of the context word of each observed pair.
+        pair_rows: Vocabulary index (int32) of the focus word of each pair.
+        pair_cols: Vocabulary index (int32) of the context word of each pair.
         pair_counts: Number of times each ``(row, col)`` pair was observed.
-            Only pairs with a nonzero count are stored; sorted by row, then
-            column.
+            Only pairs observed at least ``params["min_pair_count"]`` times
+            are stored; sorted by row, then column.
         word_total: Number of tokens kept after the ``min_word_length``
             filter, including out-of-vocabulary tokens.
         skip_total: Number of skip-grams in the corpus, including those with an
-            out-of-vocabulary word.
+            out-of-vocabulary word and those pruned by ``min_pair_count``.
         n_types: Number of distinct token types seen in pass 1.
         params: The counting parameters and corpus description that produced
             these counts.
@@ -56,8 +57,8 @@ class CooccurrenceCounts:
 
     vocabulary: list[str]
     word_counts: NDArray[np.int64]
-    pair_rows: NDArray[np.int64]
-    pair_cols: NDArray[np.int64]
+    pair_rows: NDArray[np.int32]
+    pair_cols: NDArray[np.int32]
     pair_counts: NDArray[np.int64]
     word_total: int
     skip_total: int
@@ -110,12 +111,19 @@ def count_cooccurrences(
     min_word_length: int = 3,
     vocab_size: int | None = 50_000,
     min_count: int = 100,
+    tokenizer: Literal["whitespace", "unicode"] = "whitespace",
+    lowercase: bool = False,
+    min_pair_count: int = 1,
+    n_threads: int | None = None,
 ) -> CooccurrenceCounts:
     """Count words and skip-gram pairs exactly, in two passes.
 
-    Tokenisation is whitespace splitting exactly as Python's ``str.split()``,
-    then dropping tokens shorter than ``min_word_length`` code points. Lines are
-    context boundaries. Each kept token pairs with the next ``window_size + 1``
+    Tokenisation (``tokenizer``) is either whitespace splitting exactly as
+    Python's ``str.split()``, or Unicode word segmentation (UAX #29), which
+    drops punctuation and whitespace and keeps forms like ``can't`` and
+    ``3.14`` whole. Tokens are then optionally lowercased, and those shorter
+    than ``min_word_length`` code points are dropped. Lines are context
+    boundaries. Each kept token pairs with the next ``window_size + 1``
     kept tokens (the pairs ``nltk.util.skipgrams(tokens, 2, window_size)``
     yields); out-of-vocabulary tokens still occupy window positions. Pairs are
     directional: ``(a, b)`` means ``a`` came first.
@@ -142,6 +150,19 @@ def count_cooccurrences(
             ``min_count``. Default 50,000.
         min_count: Keep only words occurring at least this many times.
             Default 100.
+        tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or
+            ``"unicode"`` (UAX #29 word boundaries). Pre-tokenised input is
+            always used verbatim and requires ``"whitespace"``.
+        lowercase: Lowercase every token (Unicode-aware) before counting.
+            Default ``False``.
+        min_pair_count: Store only pairs observed at least this many times.
+            Default 1 (every observed pair). Pruning does not change
+            ``skip_total`` or any PPMI value whose pair count exceeds the PPMI
+            threshold, so passing ``ppmi_min_count + 1`` cuts memory without
+            changing :func:`ppmi_matrix`.
+        n_threads: Threads for file input (both passes run in parallel);
+            ``None`` (default) uses one per CPU core. Iterables are read on one
+            thread. Has no effect on the counts.
 
     Returns:
         A :class:`CooccurrenceCounts` with the vocabulary, its word counts, the
@@ -151,8 +172,9 @@ def count_cooccurrences(
         TypeError: If ``corpus`` is a bare ``str`` (pass a ``Path`` for a
             file), or an item is neither ``str`` nor a sequence of ``str``.
         ValueError: If a parameter is out of range, a pre-tokenised token is
-            empty or contains whitespace, a file is not valid UTF-8, or no
-            word reaches ``min_count`` (an empty vocabulary).
+            empty or contains whitespace, pre-tokenised input is combined with
+            ``tokenizer="unicode"``, a file is not valid UTF-8, or no word
+            reaches ``min_count`` (an empty vocabulary).
         OSError: If a file cannot be read or the temporary copy cannot be
             written.
 
@@ -169,6 +191,13 @@ def count_cooccurrences(
         ...          counts.pair_counts.tolist()))
         [(0, 1, 3)]
 
+        Unicode tokenisation of raw text:
+
+        >>> raw = ["The Cat, the dog!", "the cat; THE DOG."]
+        >>> count_cooccurrences(raw, tokenizer="unicode", lowercase=True,
+        ...                     min_count=1).vocabulary
+        ['the', 'cat', 'dog']
+
     """
     if window_size < 0:
         raise ValueError(f"window_size must be >= 0, got {window_size}")
@@ -178,6 +207,14 @@ def count_cooccurrences(
         raise ValueError(f"vocab_size must be >= 1 or None, got {vocab_size}")
     if min_count < 1:
         raise ValueError(f"min_count must be >= 1, got {min_count}")
+    if min_pair_count < 1:
+        raise ValueError(f"min_pair_count must be >= 1, got {min_pair_count}")
+    if n_threads is not None and n_threads < 1:
+        raise ValueError(f"n_threads must be >= 1 or None, got {n_threads}")
+    if tokenizer not in ("whitespace", "unicode"):
+        raise ValueError(
+            f"tokenizer must be 'whitespace' or 'unicode', got {tokenizer!r}"
+        )
     if isinstance(corpus, str | bytes):
         raise TypeError(
             "corpus is a single string; pass an iterable of lines, or a "
@@ -193,18 +230,26 @@ def count_cooccurrences(
         "min_word_length": min_word_length,
         "vocab_size": vocab_size,
         "min_count": min_count,
-        "tokenizer": "str.split",
+        "tokenizer": tokenizer,
+        "lowercase": lowercase,
+        "min_pair_count": min_pair_count,
         "corpus": _describe(corpus, paths),
     }
 
+    tok: dict[str, Any] = {"tokenizer": tokenizer, "lowercase": lowercase}
+    threads = n_threads or 0
     with tempfile.TemporaryDirectory(prefix="chronowords-") as tmp:
         if paths is not None:
-            words, counts, word_total = _core.count_words_files(paths, min_word_length)
+            words, counts, word_total = _core.count_words_files(
+                paths, min_word_length, **tok, n_threads=threads
+            )
         elif isinstance(corpus, list | tuple):
-            words, counts, word_total = _core.count_words(items, min_word_length)
+            words, counts, word_total = _core.count_words(items, min_word_length, **tok)
         else:
             spill = str(Path(tmp) / "corpus.txt")
-            words, counts, word_total = _core.count_words(items, min_word_length, spill)
+            words, counts, word_total = _core.count_words(
+                items, min_word_length, spill, **tok
+            )
             paths = [spill]
 
         keep = int(np.searchsorted(-counts, -min_count, side="right"))
@@ -220,11 +265,22 @@ def count_cooccurrences(
 
         if paths is not None:
             rows, cols, pcounts, skip_total = _core.count_pairs_files(
-                paths, vocabulary, window_size, min_word_length
+                paths,
+                vocabulary,
+                window_size,
+                min_word_length,
+                **tok,
+                min_pair_count=min_pair_count,
+                n_threads=threads,
             )
         else:
             rows, cols, pcounts, skip_total = _core.count_pairs(
-                items, vocabulary, window_size, min_word_length
+                items,
+                vocabulary,
+                window_size,
+                min_word_length,
+                **tok,
+                min_pair_count=min_pair_count,
             )
 
     return CooccurrenceCounts(

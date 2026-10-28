@@ -2,6 +2,7 @@
 
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -12,6 +13,7 @@ from hypothesis import settings
 from hypothesis import strategies as st
 from nltk.util import skipgrams
 
+from chronowords import _core
 from chronowords.utils.cooccurrence import CooccurrenceCounts
 from chronowords.utils.cooccurrence import count_cooccurrences
 from chronowords.utils.cooccurrence import ppmi_matrix
@@ -249,3 +251,182 @@ def test_spill_file_is_removed(tmp_path, monkeypatch):
     monkeypatch.setattr(tempfile, "tempdir", None)
     count_cooccurrences((line for line in ["cat dog"] * 3), min_count=1)
     assert list(Path(tmp_path).iterdir()) == []
+
+
+# --- tokenizer options -------------------------------------------------------
+
+RAW = [
+    "The Cat, the dog!  It's 3.14 o'clock.",
+    "THE DOG; the cat — élő ÁRVÍZTŰRŐ tükörfúrógép.",
+] * 3
+
+
+@given(text=st.text(max_size=60))
+def test_whitespace_tokenizer_is_str_split(text):
+    """The default tokenizer is exactly ``str.split()`` for any Unicode text."""
+    assert _core.tokenize(text, 0) == text.split()
+
+
+@given(
+    text=st.text(
+        alphabet=st.sampled_from("abcABCéÉőŐ\u03c3\u03a3\u03c2 ,.!'-\t\n0123"),
+        max_size=60,
+    )
+)
+def test_unicode_tokens_are_clean_and_lowercase_is_idempotent(text):
+    """Unicode tokens contain no whitespace; lowercasing twice changes nothing."""
+    toks = _core.tokenize(text, 0, "unicode", True)
+    assert all(t and t.split() == [t] for t in toks)
+    assert _core.tokenize(" ".join(toks), 0, "whitespace", True) == toks
+
+
+def test_unicode_tokenizer_example():
+    """Punctuation is dropped; contractions and decimals stay whole."""
+    assert _core.tokenize("The Cat, it's 3.14 — ÁRVÍZTŰRŐ!", 0, "unicode", True) == [
+        "the",
+        "cat",
+        "it's",
+        "3.14",
+        "árvíztűrő",
+    ]
+
+
+def test_tokenizer_options_agree_across_input_forms(tmp_path):
+    """Files, lists and generators tokenise identically under every option."""
+    f = tmp_path / "raw.txt"
+    f.write_text("\n".join(RAW) + "\n", encoding="utf-8")
+    for tokenizer in ("whitespace", "unicode"):
+        for lowercase in (False, True):
+            kw: dict[str, Any] = {
+                "tokenizer": tokenizer,
+                "lowercase": lowercase,
+                "min_count": 1,
+            }
+            expected = as_tuple(count_cooccurrences(RAW, **kw))
+            assert as_tuple(count_cooccurrences(f, **kw)) == expected
+            assert as_tuple(count_cooccurrences(iter(RAW), **kw)) == expected
+
+
+def test_unicode_tokenizer_changes_the_vocabulary():
+    """The option is not cosmetic: punctuation-attached forms merge."""
+    ws = count_cooccurrences(RAW, min_count=1).vocabulary
+    uni = count_cooccurrences(RAW, tokenizer="unicode", lowercase=True, min_count=1)
+    assert "dog!" in ws and "Cat," in ws
+    assert "dog!" not in uni.vocabulary and "cat" in uni.vocabulary
+    assert uni.params["tokenizer"] == "unicode" and uni.params["lowercase"] is True
+
+
+def test_pretokenised_input_requires_whitespace_tokenizer():
+    """Token lists are used verbatim, never re-segmented."""
+    with pytest.raises(ValueError, match="verbatim"):
+        count_cooccurrences([["e-mail", "can't"]], tokenizer="unicode", min_count=1)
+    c = count_cooccurrences([["e-mail", "CAN'T"]] * 2, lowercase=True, min_count=1)
+    assert c.vocabulary == ["can't", "e-mail"]
+
+
+def test_unknown_tokenizer_is_rejected():
+    """A typo in ``tokenizer`` fails before counting."""
+    with pytest.raises(ValueError, match="tokenizer"):
+        count_cooccurrences(["cat dog"], tokenizer="bpe", min_count=1)  # ty: ignore[invalid-argument-type]
+
+
+# --- parallel file counting, pruning, wide keys -------------------------------
+
+
+@given(
+    text=raw_text_st,
+    chunk=st.integers(1, 40),
+    threads=st.integers(1, 4),
+    window=st.integers(0, 3),
+)
+@COOC
+def test_parallel_file_counting_ignores_chunking_and_threads(
+    text, chunk, threads, window, tmp_path_factory
+):
+    """Cutting files into (tiny) chunks and counting on several threads gives
+    exactly the sequential counts of the same lines.
+    """
+    path = tmp_path_factory.mktemp("par") / "t.txt"
+    path.write_bytes((text + "\ncat dog cat\n").encode("utf-8"))
+    with path.open(encoding="utf-8") as fh:
+        lines = list(fh)
+
+    words, counts, total = _core.count_words_files(
+        [str(path)], 0, n_threads=threads, chunk_bytes=chunk
+    )
+    e_words, e_counts, e_total = _core.count_words(lines, 0)
+    assert (words, counts.tolist(), total) == (e_words, e_counts.tolist(), e_total)
+
+    got = _core.count_pairs_files(
+        [str(path)], words, window, 0, n_threads=threads, chunk_bytes=chunk
+    )
+    exp = _core.count_pairs(lines, words, window, 0)
+    assert [a.tolist() for a in got[:3]] + [got[3]] == [a.tolist() for a in exp[:3]] + [
+        exp[3]
+    ]
+
+
+@given(lines=lines_st, min_pair=st.integers(1, 4))
+@COOC
+def test_min_pair_count_prunes_without_touching_totals_or_ppmi(lines, min_pair):
+    """Pruning keeps exactly the pairs seen >= min_pair_count times; totals and
+    PPMI cells above the threshold are unchanged.
+    """
+    assume(any(len(w) >= 3 for line in lines for w in line.split()))
+    full = count_cooccurrences(lines, min_count=1)
+    pruned = count_cooccurrences(lines, min_count=1, min_pair_count=min_pair)
+
+    keep = full.pair_counts >= min_pair
+    assert pruned.pair_rows.tolist() == full.pair_rows[keep].tolist()
+    assert pruned.pair_cols.tolist() == full.pair_cols[keep].tolist()
+    assert pruned.pair_counts.tolist() == full.pair_counts[keep].tolist()
+    assert (pruned.word_total, pruned.skip_total) == (full.word_total, full.skip_total)
+    assert pruned.params["min_pair_count"] == min_pair
+    if full.skip_total:
+        np.testing.assert_array_equal(
+            ppmi_matrix(pruned, min_count=min_pair - 1).toarray(),
+            ppmi_matrix(full, min_count=min_pair - 1).toarray(),
+        )
+
+
+def test_vocabularies_beyond_65536_words_use_wide_keys(tmp_path):
+    """Pair keys switch from 32 to 64 bits above 65,536 words; ids >= 65,536
+    must survive the round trip.
+    """
+    vocab = [f"w{i}" for i in range(70_000)]
+    lines = ["w0 w69999 w65536", "w65536 w1 w69999"]
+    f = tmp_path / "wide.txt"
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    expected = Counter(p for line in lines for p in skipgrams(line.split(), 2, 1))
+    for rows, cols, counts, _ in (
+        _core.count_pairs(lines, vocab, 1, 0),
+        _core.count_pairs_files([str(f)], vocab, 1, 0, chunk_bytes=5),
+    ):
+        got = {
+            (vocab[r], vocab[c]): n
+            for r, c, n in zip(
+                rows.tolist(), cols.tolist(), counts.tolist(), strict=True
+            )
+        }
+        assert got == dict(expected)
+
+
+def test_svdalgebra_keeps_only_pairs_that_can_enter_ppmi():
+    """SVDAlgebra prunes stored pairs at its PPMI threshold; PPMI is unaffected."""
+    from chronowords.algebra.svd import SVDAlgebra
+
+    lines = ["cat dog fish", "cat dog bird", "fish bird cow"] * 4
+    model = SVDAlgebra(n_components=2, min_count=1, ppmi_min_count=5)
+    model.train(lines)
+    assert model.counts is not None
+    assert model.counts.pair_counts.min() > 5
+    assert model.counts.params["min_pair_count"] == 6
+    full = count_cooccurrences(lines, min_count=1)
+    assert model.ppmi is not None
+    np.testing.assert_array_equal(model.ppmi.toarray(), ppmi_matrix(full).toarray())
+
+
+def test_n_threads_is_validated():
+    """``n_threads`` must be a positive integer or None."""
+    with pytest.raises(ValueError, match="n_threads"):
+        count_cooccurrences(["cat dog"], min_count=1, n_threads=0)

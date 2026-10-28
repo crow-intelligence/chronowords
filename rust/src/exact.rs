@@ -7,25 +7,42 @@
 //! `nltk.util.skipgrams` sees it). The skip-gram total counts *all* pairs,
 //! in- or out-of-vocabulary, matching the sketch path's denominator.
 
-use crate::tokenize::{n_skipgrams, tokens};
+use crate::pairs::{PairKey, PairTable, OOV};
+use crate::tokenize::{n_skipgrams, Tokenizer};
 use rustc_hash::FxHashMap;
 
-#[derive(Default)]
 pub struct WordCounter {
     pub counts: FxHashMap<String, u64>,
     pub total: u64,
+    tokenizer: Tokenizer,
+    buf: String,
 }
 
 impl WordCounter {
-    pub fn add_line(&mut self, line: &str, min_len: usize) {
-        for w in tokens(line, min_len) {
-            self.total += 1;
-            if let Some(c) = self.counts.get_mut(w) {
+    pub fn new(tokenizer: Tokenizer) -> Self {
+        Self {
+            counts: FxHashMap::default(),
+            total: 0,
+            tokenizer,
+            buf: String::new(),
+        }
+    }
+
+    pub fn add_line(&mut self, line: &str) {
+        let Self {
+            counts,
+            total,
+            tokenizer,
+            buf,
+        } = self;
+        tokenizer.for_each(line, buf, |w| {
+            *total += 1;
+            if let Some(c) = counts.get_mut(w) {
                 *c += 1;
             } else {
-                self.counts.insert(w.to_owned(), 1);
+                counts.insert(w.to_owned(), 1);
             }
-        }
+        });
     }
 
     /// `(word, count)` sorted by descending count, ties by word.
@@ -36,61 +53,64 @@ impl WordCounter {
     }
 }
 
-pub struct PairCounter {
+/// Sequential exact pair counting (used for Python iterables).
+pub struct PairCounter<K> {
     index: FxHashMap<String, u32>,
-    pub counts: FxHashMap<u64, u64>,
+    pub table: PairTable<K>,
     pub total: u64,
     window: usize,
-    min_len: usize,
-    ids: Vec<Option<u32>>,
+    tokenizer: Tokenizer,
+    buf: String,
+    ids: Vec<u32>,
 }
 
-impl PairCounter {
-    pub fn new(vocabulary: &[String], window: usize, min_len: usize) -> Self {
-        let index = vocabulary
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (w.clone(), i as u32))
-            .collect();
+/// Vocabulary word -> id.
+pub fn vocab_index(vocabulary: &[String]) -> FxHashMap<String, u32> {
+    vocabulary
+        .iter()
+        .enumerate()
+        .map(|(i, w)| (w.clone(), i as u32))
+        .collect()
+}
+
+/// Ids of the kept tokens of `line` (OOV for out-of-vocabulary tokens).
+#[inline]
+pub fn line_ids(
+    line: &str,
+    tokenizer: &Tokenizer,
+    index: &FxHashMap<String, u32>,
+    buf: &mut String,
+    ids: &mut Vec<u32>,
+) {
+    tokenizer.for_each(line, buf, |w| {
+        ids.push(index.get(w).copied().unwrap_or(OOV))
+    });
+}
+
+impl<K: PairKey> PairCounter<K> {
+    pub fn new(vocabulary: &[String], window: usize, tokenizer: Tokenizer) -> Self {
         Self {
-            index,
-            counts: FxHashMap::default(),
+            index: vocab_index(vocabulary),
+            table: PairTable::new(1),
             total: 0,
             window,
-            min_len,
+            tokenizer,
+            buf: String::new(),
             ids: Vec::new(),
         }
     }
 
     pub fn add_line(&mut self, line: &str) {
         self.ids.clear();
-        for w in tokens(line, self.min_len) {
-            self.ids.push(self.index.get(w).copied());
-        }
-        let n = self.ids.len();
-        self.total += n_skipgrams(n, self.window);
-        for i in 0..n {
-            let Some(a) = self.ids[i] else { continue };
-            let hi = (i + self.window + 1).min(n - 1);
-            for j in (i + 1)..=hi {
-                if let Some(b) = self.ids[j] {
-                    *self
-                        .counts
-                        .entry(((a as u64) << 32) | b as u64)
-                        .or_insert(0) += 1;
-                }
-            }
-        }
-    }
-
-    /// COO `(rows, cols, counts)` sorted by row then column.
-    pub fn into_coo(self) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
-        let mut v: Vec<_> = self.counts.into_iter().collect();
-        v.sort_unstable_by_key(|&(k, _)| k);
-        let rows = v.iter().map(|&(k, _)| (k >> 32) as i64).collect();
-        let cols = v.iter().map(|&(k, _)| (k & 0xffff_ffff) as i64).collect();
-        let counts = v.iter().map(|&(_, c)| c as i64).collect();
-        (rows, cols, counts)
+        line_ids(
+            line,
+            &self.tokenizer,
+            &self.index,
+            &mut self.buf,
+            &mut self.ids,
+        );
+        self.total += n_skipgrams(self.ids.len(), self.window);
+        self.table.shards[0].add_line(&self.ids, self.window, 0, 1);
     }
 }
 
@@ -105,12 +125,12 @@ pub struct PpmiParams {
 
 /// PPMI over exact counts, in O(nnz). Same formula as the sketch kernel.
 pub fn ppmi_from_counts(
-    rows: &[i64],
-    cols: &[i64],
+    rows: &[i32],
+    cols: &[i32],
     pair_counts: &[i64],
     word_counts: &[i64],
     p: &PpmiParams,
-) -> (Vec<f64>, Vec<i64>, Vec<i64>) {
+) -> (Vec<f64>, Vec<i32>, Vec<i32>) {
     const EPS: f64 = 1e-10;
     let log_shift = p.shift.ln();
     let prob = |c: i64| {
@@ -152,13 +172,21 @@ mod tests {
     #[test]
     fn pair_counts_skip_oov_but_keep_positions() {
         let vocab = vec!["cat".to_string(), "dog".to_string()];
-        let mut pc = PairCounter::new(&vocab, 0, 3);
+        let tok = Tokenizer {
+            kind: crate::tokenize::Kind::Whitespace,
+            lowercase: false,
+            min_len: 3,
+        };
+        let mut pc = PairCounter::<u32>::new(&vocab, 0, tok);
         // window 0 -> adjacent pairs only; "big" is OOV, so cat-dog are not adjacent
         pc.add_line("cat big dog");
         pc.add_line("cat dog");
         assert_eq!(pc.total, 3);
-        let (r, c, n) = pc.into_coo();
-        assert_eq!((r, c, n), (vec![0], vec![1], vec![1]));
+        let coo = pc.table.into_coo(1);
+        assert_eq!(
+            (coo.rows, coo.cols, coo.counts),
+            (vec![0], vec![1], vec![1])
+        );
     }
 
     #[test]
