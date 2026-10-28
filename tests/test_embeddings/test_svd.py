@@ -76,6 +76,39 @@ def test_svd_algebra_full_pipeline(small_corpus):
             assert all(0 <= sim.similarity <= 1 for sim in similars)
 
 
+def test_train_produces_nonempty_ppmi(caplog):
+    """Training on a corpus with repeated co-occurrences yields real PPMI signal.
+
+    Regression: word marginals were read from the skip-gram sketch, so every
+    vocabulary word looked unseen, the PPMI matrix was empty and the
+    embeddings came from the noisy dense-SVD fallback.
+    """
+    corpus = ["cat dog fish", "bird cow pig"] * 20
+    model = SVDAlgebra(n_components=2, window_size=2)
+
+    with caplog.at_level("WARNING", logger="chronowords.algebra.svd"):
+        model.train(line for line in corpus)
+
+    assert model._ppmi_sparse is not None
+    assert model._ppmi_sparse.nnz > 0
+    assert "PPMI matrix is empty" not in caplog.text
+    # cat precedes dog on every line; cat never precedes cow
+    i = model._vocab_index
+    assert model._ppmi_sparse[i["cat"], i["dog"]] > 0
+    assert model._ppmi_sparse[i["cat"], i["cow"]] == 0
+
+
+def test_train_warns_on_empty_ppmi(caplog):
+    """An empty PPMI matrix is reported, not silently factorised."""
+    corpus = ["alpha beta gamma delta"]  # every count is 1, below the >5 threshold
+    model = SVDAlgebra(n_components=2)
+
+    with caplog.at_level("WARNING", logger="chronowords.algebra.svd"):
+        model.train(line for line in corpus)
+
+    assert "PPMI matrix is empty" in caplog.text
+
+
 @pytest.mark.parametrize("batch_size", [2, 5, 10])
 def test_ppmi_batch_processing(batch_size):
     """Test PPMI computation with different batch sizes."""
