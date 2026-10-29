@@ -46,7 +46,7 @@ jobs:
         run: |
           python -m pip install dist/*.whl
           cd "$RUNNER_TEMP"
-          python -c "from chronowords import _core; assert _core.murmur3_32(b'cat#dog', 42) == 1718930470; print('ok')"
+          python -c "from chronowords.utils import count_cooccurrences as c; r = c(['cat dog'] * 3, min_count=1); assert (r.vocabulary, r.pair_counts.tolist()) == (['cat', 'dog'], [3]); print('ok')"
 
       - uses: actions/upload-artifact@v4
         with:
