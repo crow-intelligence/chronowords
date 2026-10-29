@@ -1,0 +1,14 @@
+{
+  "source": "data/raw/wikipedia/20231101.en",
+  "output": "data/derived/enwiki.txt",
+  "bytes": 3000000152,
+  "lines": 15091180,
+  "tokens": 503360458,
+  "paragraphs_dropped": 27490352,
+  "params": {
+    "tokenizer": "[^\\W\\d_]+",
+    "lowercase": true,
+    "min_tokens": 5,
+    "max_mb": 3000.0
+  }
+}
