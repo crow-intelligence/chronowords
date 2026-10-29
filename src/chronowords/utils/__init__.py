@@ -1,4 +1,6 @@
-from chronowords.utils.probabilistic_counter import CountMinSketch
+from chronowords.utils.cooccurrence import CooccurrenceCounts
+from chronowords.utils.cooccurrence import count_cooccurrences
+from chronowords.utils.cooccurrence import ppmi_matrix
 
 
-__all__ = ["CountMinSketch"]
+__all__ = ["CooccurrenceCounts", "count_cooccurrences", "ppmi_matrix"]

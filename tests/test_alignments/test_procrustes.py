@@ -269,3 +269,14 @@ def test_find_common_words_returns_intersection():
     source = ["king", "queen", "man"]
     target = ["queen", "man", "woman"]
     assert aligner.find_common_words(source, target) == ["man", "queen"]
+
+
+def test_word_similarity_is_none_for_a_zero_vector():
+    """A word without a vector (all zeros) has no defined shift: None, not nan."""
+    aligner = ProcrustesAligner()
+    vocab = ["a", "b", "c", "z"]
+    src = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]])
+    tgt = src.copy()
+    aligner.fit(src, tgt, vocab, vocab, ["a", "b", "c"])
+    assert aligner.get_word_similarity("z", src, tgt) is None
+    assert aligner.get_word_similarity("a", src, tgt) == pytest.approx(1.0)
