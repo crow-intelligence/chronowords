@@ -202,3 +202,11 @@ docs/_build/
 data/*.txt
 data/*.json
 data/corpus
+
+# Raw corpus downloads (provenance manifests are committed, payloads are not)
+data/raw/**
+!data/raw/**/
+!data/raw/**/*.manifest.json
+!data/raw/README.md
+# Derived, rebuildable corpora
+data/derived/
