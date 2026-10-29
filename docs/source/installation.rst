@@ -7,8 +7,10 @@ Install the released package from PyPI:
 
    pip install chronowords
 
-chronowords ships a compiled Cython extension, so a C/C++ compiler is required if
-no wheel is available for your platform. Python 3.10–3.12 is supported.
+chronowords ships a compiled Rust extension (``chronowords._core``). Installing
+from a wheel needs no compiler; building from source (an sdist, a git checkout, or
+a platform without a wheel) needs a Rust toolchain — install it with
+`rustup <https://rustup.rs>`_. Python 3.13 or newer is required; 3.13, 3.14 and 3.15 are tested.
 
 Install from source
 -------------------
@@ -30,7 +32,7 @@ full development environment (project, dev, and docs dependencies):
    uv sync --all-groups
    uv run pytest          # run the test suite
 
-After editing the Cython source (``count_skipgrams.pyx``), rebuild the extension:
+After editing the Rust source (``rust/src/*.rs``), rebuild the extension:
 
 .. code-block:: bash
 

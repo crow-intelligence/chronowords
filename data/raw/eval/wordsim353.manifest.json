@@ -1,0 +1,10 @@
+{
+  "url": "https://gabrilovich.com/resources/data/wordsim353/wordsim353.zip",
+  "page": "https://gabrilovich.com/resources/data/wordsim353/wordsim353.html",
+  "licence": "CC BY 4.0",
+  "citation": "Finkelstein et al. (2002). Placing search in context: the concept revisited. ACM TOIS 20(1):116-131.",
+  "file": "wordsim353.zip",
+  "bytes": 23257,
+  "sha256": "4f12a5fe9650184662306f8ae72c7e6bb44c2627e0275e9f9c6eb067e3441a22",
+  "fetched_at": "2026-10-29T14:23:38+00:00"
+}

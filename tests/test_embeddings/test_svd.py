@@ -5,47 +5,9 @@ import pytest
 from hypothesis import given
 from hypothesis import settings
 from hypothesis import strategies as st
-from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
-from chronowords.utils.count_skipgrams import PPMIComputer  # ty: ignore
 from tests.strategies import trainable_corpus
-
-
-def test_ppmi_computation():
-    """Test PPMI matrix computation with various parameters."""
-    vocab_size = 5
-    counts = np.zeros((3, 100), dtype=np.int32)
-    for i in range(vocab_size):
-        counts[0, i] = 10 * (i + 1)
-        counts[1, i] = 5 * (i + 1)
-
-    vocabulary = [f"word{i}" for i in range(vocab_size)]
-    seeds = [42, 43, 44]
-
-    params = [
-        {"shift": 1.0, "alpha": 0.75},
-        {"shift": 2.0, "alpha": 0.75},
-        {"shift": 1.0, "alpha": 1.0},
-    ]
-
-    for param in params:
-        computer = PPMIComputer(
-            skipgram_counts=counts,
-            word_counts=counts,
-            vocabulary=vocabulary,
-            seeds=seeds,
-            width=100,
-            skip_total=sum(counts[0]),
-            word_total=sum(counts[0]),
-            **param,
-        )
-        matrix = computer.compute_ppmi_matrix_with_sketch()
-
-        assert isinstance(matrix, csr_matrix)
-        assert matrix.shape == (vocab_size, vocab_size)
-        assert matrix.data.dtype == np.float64
-        assert np.all(matrix.data >= 0)
 
 
 def test_svd_algebra_full_pipeline(small_corpus):
@@ -54,11 +16,11 @@ def test_svd_algebra_full_pipeline(small_corpus):
         n_components=5,
         window_size=3,
         min_word_length=2,
-        cms_width=100,
-        cms_depth=3,
+        min_count=1,
+        ppmi_min_count=0,
     )
 
-    model.train(iter(small_corpus))
+    model.train(small_corpus)
 
     assert len(model.vocabulary) > 0
     assert model.embeddings is not None
@@ -76,37 +38,48 @@ def test_svd_algebra_full_pipeline(small_corpus):
             assert all(0 <= sim.similarity <= 1 for sim in similars)
 
 
-@pytest.mark.parametrize("batch_size", [2, 5, 10])
-def test_ppmi_batch_processing(batch_size):
-    """Test PPMI computation with different batch sizes."""
-    vocab_size = 10
-    counts = np.zeros((3, 100), dtype=np.int32)
-    counts[0, :vocab_size] = 10
-    vocabulary = [f"word{i}" for i in range(vocab_size)]
+def test_train_produces_nonempty_ppmi(caplog):
+    """Training on a corpus with repeated co-occurrences yields real PPMI signal.
 
-    computer = PPMIComputer(
-        skipgram_counts=counts,
-        word_counts=counts,
-        vocabulary=vocabulary,
-        seeds=[42, 43, 44],
-        width=100,
-        skip_total=float(vocab_size * 10),
-        word_total=float(vocab_size * 10),
-    )
-    matrix = computer.compute_ppmi_matrix_with_sketch(batch_size=batch_size)
+    Regression: word marginals were read from the skip-gram sketch, so every
+    vocabulary word looked unseen, the PPMI matrix was empty and the
+    embeddings came from the noisy dense-SVD fallback.
+    """
+    corpus = ["cat dog fish", "bird cow pig"] * 20
+    model = SVDAlgebra(n_components=2, window_size=2, min_count=1)
 
-    assert matrix.shape == (vocab_size, vocab_size)
+    with caplog.at_level("WARNING", logger="chronowords.algebra.svd"):
+        model.train(line for line in corpus)
+
+    assert model._ppmi_sparse is not None
+    assert model._ppmi_sparse.nnz > 0
+    assert "PPMI matrix is empty" not in caplog.text
+    # cat precedes dog on every line; cat never precedes cow
+    i = model._vocab_index
+    assert model._ppmi_sparse[i["cat"], i["dog"]] > 0
+    assert model._ppmi_sparse[i["cat"], i["cow"]] == 0
+
+
+def test_train_warns_on_empty_ppmi(caplog):
+    """An empty PPMI matrix is reported, not silently factorised."""
+    corpus = ["alpha beta gamma delta"]  # every count is 1, below the >5 threshold
+    model = SVDAlgebra(n_components=2, min_count=1)
+
+    with caplog.at_level("WARNING", logger="chronowords.algebra.svd"):
+        model.train(line for line in corpus)
+
+    assert "PPMI matrix is empty" in caplog.text
 
 
 def test_model_persistence(tmp_path, small_corpus):
     """Test model save/load functionality."""
-    model = SVDAlgebra(n_components=5, cms_width=100, cms_depth=3)
-    model.train(iter(small_corpus))
+    model = SVDAlgebra(n_components=5, min_count=1, ppmi_min_count=0)
+    model.train(small_corpus)
 
     save_path = tmp_path / "model"
     model.save_model(save_path)
 
-    loaded_model = SVDAlgebra(n_components=5, cms_width=100, cms_depth=3)
+    loaded_model = SVDAlgebra(n_components=5)
     loaded_model.load_model(save_path)
 
     assert model.vocabulary == loaded_model.vocabulary
@@ -228,7 +201,7 @@ def trained_model():
         "king leads army battle victory",
         "queen commands navy battle victory",
     ]
-    model = SVDAlgebra(n_components=5, cms_width=100, cms_depth=3, min_word_length=2)
+    model = SVDAlgebra(n_components=5, min_word_length=2, min_count=1, ppmi_min_count=0)
     model.train(line for line in corpus)
     return model
 
@@ -298,7 +271,7 @@ def test_save_load_round_trip(corpus):
     Models are trained once and reloaded many times downstream, so a reloaded
     model must be indistinguishable from the original.
     """
-    model = SVDAlgebra(n_components=5, cms_width=2000, cms_depth=3, min_word_length=2)
+    model = SVDAlgebra(n_components=5, min_word_length=2, min_count=1)
     model.train(iter(corpus))
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -310,3 +283,240 @@ def test_save_load_round_trip(corpus):
     assert model.embeddings is not None
     assert reloaded.embeddings is not None
     assert np.allclose(reloaded.embeddings, model.embeddings)
+    assert reloaded.ppmi is not None and model.ppmi is not None
+    np.testing.assert_array_equal(reloaded.ppmi.toarray(), model.ppmi.toarray())
+    assert reloaded.training_record == model.training_record
+
+
+# --- exact counting, counts and training record ------------------------------
+
+SIGNAL_CORPUS = [
+    "king queen crown palace royal throne",
+    "man woman child family home",
+    "king rules kingdom palace throne",
+    "boy girl child plays home",
+] * 10
+
+
+def test_m_dense_is_gone():
+    """The dense V x V copy is no longer built or exposed."""
+    model = SVDAlgebra(n_components=2, min_count=1)
+    model.train(SIGNAL_CORPUS)
+    assert not hasattr(model, "M_dense")
+    assert model.ppmi is model._ppmi_sparse
+
+
+def test_exact_mode_records_counts_and_parameters():
+    """Training returns the counts and the parameters behind the PPMI matrix."""
+    model = SVDAlgebra(n_components=2, min_count=10, vocab_size=5)
+    model.train(SIGNAL_CORPUS)
+
+    assert model.counts is not None
+    assert model.counts.vocabulary == model.vocabulary
+    assert len(model.vocabulary) == 5
+    assert model.counts.word_counts.min() >= 10
+    rec = model.training_record
+    assert rec is not None
+    assert rec["params"]["min_count"] == 10
+    assert rec["word_total"] == sum(len(line.split()) for line in SIGNAL_CORPUS)
+    assert rec["vocab_size"] == 5
+    assert model.ppmi is not None
+    assert rec["ppmi_nnz"] == model.ppmi.nnz
+
+
+def test_training_is_deterministic():
+    """Same corpus, same parameters -> identical vocabulary and embeddings."""
+    a = SVDAlgebra(n_components=3, min_count=1)
+    b = SVDAlgebra(n_components=3, min_count=1)
+    a.train(SIGNAL_CORPUS)
+    b.train(iter(SIGNAL_CORPUS))
+    assert a.vocabulary == b.vocabulary
+    np.testing.assert_array_equal(a.embeddings, b.embeddings)
+
+
+def test_vocabulary_order_does_not_depend_on_hash_seed(tmp_path):
+    """Vocabulary order is identical across processes with different string
+    hash seeds (it used to follow set iteration order on count ties).
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "import json; from chronowords.algebra.svd import SVDAlgebra\n"
+        f"m = SVDAlgebra(n_components=2, min_count=1); m.train({SIGNAL_CORPUS!r})\n"
+        "print(json.dumps(m.vocabulary))"
+    )
+    runs = [
+        subprocess.run(
+            [sys.executable, "-c", script],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for seed in ("1", "2")
+    ]
+    assert json.loads(runs[0]) == json.loads(runs[1])
+
+
+def test_train_accepts_paths_lines_and_tokens(tmp_path):
+    """A file, a list of lines and pre-tokenised lines give the same model."""
+    corpus_file = tmp_path / "corpus.txt"
+    corpus_file.write_text("\n".join(SIGNAL_CORPUS) + "\n", encoding="utf-8")
+    models = []
+    for corpus in (
+        corpus_file,
+        [corpus_file],
+        SIGNAL_CORPUS,
+        (line.split() for line in SIGNAL_CORPUS),
+    ):
+        m = SVDAlgebra(n_components=3, min_count=1)
+        m.train(corpus)
+        models.append(m)
+    for m in models[1:]:
+        assert m.vocabulary == models[0].vocabulary
+        np.testing.assert_allclose(m.embeddings, models[0].embeddings)
+
+
+def test_train_rejects_a_bare_string():
+    """A str corpus would be iterated character by character; refuse it."""
+    with pytest.raises(TypeError, match="single string"):
+        SVDAlgebra(min_count=1).train("king queen crown")
+
+
+def test_empty_vocabulary_explains_min_count():
+    """The default min_count is too high for tiny corpora, and says so."""
+    with pytest.raises(ValueError, match="Lower min_count"):
+        SVDAlgebra().train(["the cat sat"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"tokenizer": "bpe"},
+        {"n_components": 0},
+        {"min_count": 0},
+        {"vocab_size": 0},
+        {"shift": 0.0},
+        {"window_size": -1},
+    ],
+)
+def test_constructor_validates(kwargs):
+    """Out-of-range parameters fail at construction, not deep inside train."""
+    with pytest.raises(ValueError):
+        SVDAlgebra(**kwargs)
+
+
+def test_load_model_reads_legacy_dense_ppmi(tmp_path):
+    """Model directories from chronowords < 0.4 stored a dense ppmi.npy."""
+    import pickle
+
+    np.save(tmp_path / "embeddings.npy", np.eye(2))
+    np.save(tmp_path / "ppmi.npy", np.array([[0.0, 1.5], [0.0, 0.0]]))
+    with (tmp_path / "vocabulary.pkl").open("wb") as fh:
+        pickle.dump(["cat", "dog"], fh)
+
+    model = SVDAlgebra()
+    model.load_model(tmp_path)
+
+    assert model.ppmi is not None
+    assert model.ppmi.nnz == 1
+    assert model.ppmi[0, 1] == 1.5
+    assert model.training_record is None
+
+
+def test_sketch_parameters_are_gone():
+    """The Count-Min Sketch mode was removed in 0.4; its arguments now fail loudly."""
+    with pytest.raises(TypeError):
+        SVDAlgebra(counting="sketch")  # ty: ignore[unknown-argument]
+    with pytest.raises(TypeError):
+        SVDAlgebra(100, 5, 3, 1_000_000, 5)  # ty: ignore[too-many-positional-arguments]
+
+
+# --- vectors without information ---------------------------------------------
+
+SLICE_1775 = (
+    __import__("pathlib").Path(__file__).resolve().parents[2]
+    / "data"
+    / "corpus"
+    / "speeches_1775-1799_lemmatized.txt"
+)
+
+
+def test_empty_ppmi_rows_get_exactly_zero_vectors():
+    """A word heading no PPMI entry has no information, so its vector is 0.
+
+    In exact arithmetic U = M V S^-1 makes such rows zero; the solver leaves
+    round-off that normalisation would turn into a random direction.
+    """
+    # the old default threshold, which leaves many rows empty on this slice
+    model = SVDAlgebra(n_components=20, min_count=20, ppmi_min_count=5)
+    model.train(SLICE_1775)
+    assert model.ppmi is not None and model.embeddings is not None
+    empty = np.diff(model.ppmi.indptr) == 0
+    assert empty.any()
+    assert (model.embeddings[empty] == 0.0).all()
+    zero = (model.embeddings == 0.0).all(axis=1)
+    assert model.training_record is not None
+    assert model.training_record["zero_vectors"] == int(zero.sum())
+    for i in np.flatnonzero(empty)[:5]:
+        assert not model.has_vector(model.vocabulary[i])
+
+
+def test_no_neighbour_lacks_a_vector():
+    """Regression: on this small slice, 69 of 117 queries used to return
+    round-off vectors (pure noise) among their top-5 neighbours.
+    """
+    model = SVDAlgebra(n_components=100, min_count=20, ppmi_min_count=5)
+    model.train(SLICE_1775)
+    queried = 0
+    for word in model.vocabulary:
+        hits = model.most_similar(word, n=5)
+        if not model.has_vector(word):
+            assert hits == []
+            continue
+        queried += 1
+        assert all(model.has_vector(h.word) for h in hits)
+    assert queried > 0
+    no_vector = next(w for w in model.vocabulary if not model.has_vector(w))
+    assert model.distance(no_vector, model.vocabulary[0]) is None
+    assert model.analogy([no_vector, model.vocabulary[0]], model.vocabulary[1]) is None
+
+
+def test_eig_scales_singular_values():
+    """Embeddings are U * S**eig: changing eig rescales each dimension only."""
+    a = SVDAlgebra(n_components=3, min_count=1, eig=0.0)
+    b = SVDAlgebra(n_components=3, min_count=1, eig=1.0)
+    a.train(SIGNAL_CORPUS)
+    b.train(SIGNAL_CORPUS)
+    assert a.embeddings is not None and b.embeddings is not None
+    has = (a.embeddings != 0).any(axis=1)
+    ratio = b.embeddings[has] / a.embeddings[has]
+    # each column is scaled by one constant (its singular value)
+    np.testing.assert_allclose(ratio, np.broadcast_to(ratio[0], ratio.shape), rtol=1e-8)
+    assert b.training_record is not None
+    assert b.training_record["params"]["eig"] == 1.0
+
+
+@pytest.mark.parametrize("kwargs", [{"alpha": 0.0}, {"eig": -0.5}])
+def test_smoothing_parameters_are_validated(kwargs):
+    """Alpha must be positive and eig non-negative."""
+    with pytest.raises(ValueError):
+        SVDAlgebra(**kwargs)
+
+
+def test_max_memory_does_not_change_the_model():
+    """A memory budget changes how counting is done, never what is counted."""
+    a = SVDAlgebra(n_components=3, min_count=1, ppmi_min_count=2)
+    b = SVDAlgebra(n_components=3, min_count=1, ppmi_min_count=2, max_memory="256KB")
+    a.train(SIGNAL_CORPUS)
+    b.train(SIGNAL_CORPUS)
+    assert a.vocabulary == b.vocabulary
+    assert a.ppmi is not None and b.ppmi is not None
+    np.testing.assert_array_equal(a.ppmi.toarray(), b.ppmi.toarray())
+    np.testing.assert_array_equal(a.embeddings, b.embeddings)
+    assert b.training_record is not None
+    assert b.training_record["memory"]["pairs"]["sketch_bytes"] > 0
+    assert b.training_record["n_types"] is None

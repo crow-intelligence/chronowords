@@ -1,0 +1,10 @@
+{
+  "url": "https://fh295.github.io/SimLex-999.zip",
+  "page": "https://fh295.github.io/simlex.html",
+  "licence": "not stated on the distribution page; not redistributed",
+  "citation": "Hill, Reichart & Korhonen (2015). SimLex-999: Evaluating semantic models with (genuine) similarity estimation. Computational Linguistics 41(4):665-695.",
+  "file": "simlex999.zip",
+  "bytes": 16805,
+  "sha256": "30f40eb18f41b08b65dfbc328f473e8b69ba444b1c9d053c1adde2324fc76315",
+  "fetched_at": "2026-10-29T14:23:38+00:00"
+}

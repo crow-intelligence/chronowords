@@ -1,0 +1,14 @@
+{
+  "source": "data/raw/wikipedia/20231101.hu",
+  "output": "data/derived/huwiki.txt",
+  "bytes": 1211133378,
+  "lines": 5574155,
+  "tokens": 154162983,
+  "paragraphs_dropped": 12720372,
+  "params": {
+    "tokenizer": "[^\\W\\d_]+",
+    "lowercase": true,
+    "min_tokens": 5,
+    "max_mb": null
+  }
+}
