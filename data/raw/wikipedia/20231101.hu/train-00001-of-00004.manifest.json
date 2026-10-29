@@ -1,0 +1,8 @@
+{
+  "source": "huggingface.co/datasets/wikimedia/wikipedia",
+  "licence": "CC BY-SA 4.0 / GFDL",
+  "url": "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/main/20231101.hu/train-00001-of-00004.parquet",
+  "size": 225420642,
+  "sha256": "3c20a9b8bac6ce6b1cbaca52d0d6e2d997253be01b99b7f847e08d1191081054",
+  "fetched_at": "2026-10-28T14:25:49+00:00"
+}
