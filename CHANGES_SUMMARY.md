@@ -3,7 +3,7 @@
 Goal: make "analyse gigabytes of text on a laptop" true. The previous summary (PRs #6–#9,
 all merged) is in git history at `a129b09`.
 
-Eleven PRs, **none merged**, in two batches. They are stacked, so merge in this order:
+Fifteen PRs, **none merged**, in three batches. They are stacked, so merge in this order:
 
 | order | PR | branch | what |
 |---|---|---|---|
@@ -17,11 +17,56 @@ Eleven PRs, **none merged**, in two batches. They are stacked, so merge in this 
 | 8 | #17 | `remove-sketch-mode` | Count-Min Sketch mode removed; exact counting only |
 | 9 | #18 | `icu-tokenizer` | `tokenizer="unicode"` uses ICU4X: Chinese, Japanese, Thai, … |
 | 10 | #19 | `notebook-fix` | Example notebook fixed and re-executed with 0.4 |
-| 11 | #20 | `hansard-diachronic` | Hansard 1919–2026 diachronic experiment + this summary update |
+| 11 | #20 | `hansard-diachronic` | Hansard 1919–2026 diachronic experiment |
+| 12 | #21 | `eval-harness` | Evaluation harness (WordSim-353, SimLex-999) + baseline |
+| 13 | #22 | `smoothing-published` | PPMI as published (Levy et al. 2015), defaults from evidence, words without vectors |
+| 14 | #23 | `sketch-filter` | Optional `max_memory`: Count-Min Sketch as an exact-preserving filter |
+| 15 | #24 | `rerun-experiments` | Notebook and Hansard re-run on #22's defaults + this summary |
 
 #14 and #11 are independent of each other; both build on #10. #15 merges #14 into the
 #13 chain. #16–#18 stack on #15. #19 and #20 each stack on #18 and are independent of
 each other.
+
+## Third batch (2026-10-29): smoothing chosen by evidence, bounded memory
+
+You were uneasy about losing the Count-Min Sketch (your bounter-inspired
+design), about laptop resources, and about how rare words are handled. We
+agreed to measure quality first, then fix the smoothing, and to bring the
+sketch back as a filter that cannot change the numbers.
+
+- **#21 — evaluation harness.** Spearman ρ on WordSim-353 (CC BY 4.0) and
+  SimLex-999, always with coverage, on 100 MB and 1 GB of English Wikipedia.
+  MEN and the WordSim similarity/relatedness split were left out: their hosts
+  are gone. **Finding:** dropping pairs seen 5 times or fewer was the largest
+  quality loss in the defaults, and the source of the zero vectors.
+- **#22 — PPMI as published, defaults from evidence.**
+  - Our "context-distribution smoothing" did not match Levy, Goldberg & Dagan
+    (2015): it was applied to the focus word and not normalised. It now
+    follows the paper, with marginals from the full co-occurrence matrix
+    (accumulated in Rust before pruning).
+  - The **`ppmi_min_count` default goes from 5 to 1.** `alpha` stays 0.75
+    and `eig` stays 0.5.
+  - Result: **1 GB English goes from WordSim 0.55 / SimLex 0.19 to 0.68 /
+    0.29**, and the zero vectors go from 2,140 to 0.
+  - Words without a vector are now exactly zero, `has_vector()` is added, and
+    `ProcrustesAligner.get_word_similarity` returns **`None` instead of
+    `nan`**.
+- **#23 — `max_memory`.**
+  - A conservative-update Count-Min Sketch decides which words and pairs are
+    counted exactly. Kept counts are **identical** to the unbounded path (a
+    Hypothesis property); an overrun raises `MemoryError`.
+  - **Honest result:** at the new default it cannot lower the peak, because
+    the pairs seen twice or more are the model. With `ppmi_min_count=5` a 1 GB
+    budget cut 1 GB English from 2.03 to 1.28 GB, at 2.3× the time.
+- **#24 — re-runs on #22's defaults.**
+  - Notebook: clean, with 251 alignment anchors in the earliest period
+    instead of 94.
+  - Hansard: the controls are quieter (shift 0.08), and the neighbours are
+    cleaner. *gay* is clean from the 1980s; *climate* shows three senses
+    (weather → "atmosphere, mood" → *Kyoto, warming*); *web* reaches
+    *internet* in the 1990s; *terror* goes *horror, dread* → *IRA* →
+    *al-Qaeda* → *Hamas*.
+  - All 12 decades train in 7.2 minutes, at most 1.13 GB per decade.
 
 ## Second batch (2026-10-29), after your answers
 
@@ -125,28 +170,30 @@ sketch PPMI entries on the 23.5 MB presidential corpus are collision artefacts.
 
 ## Needs your decision
 
-Still open:
-
 1. **Releases.** #10 alone is a good **0.3.1** hotfix; the rest is **0.4.0** (breaking:
-   defaults, numbers, removed `M_dense`, sketch mode, `CountMinSketch`, `PPMIComputer`,
-   Python ≥ 3.13). I bumped no versions and published nothing. `publish.yml` is ready
-   (#16).
-2. **Downstream: kenon.** `PMIEmbedder` trains on small corpora with the default
-   `min_count=100`, which now raises "Empty vocabulary"; its 2-line doctest will fail
-   against 0.4. kenon also needs Python ≥ 3.13 to install 0.4. I haven't touched kenon.
-3. **`ProcrustesAligner.get_word_similarity` returns `nan`** for a word whose embedding
-   is all zero (no PPMI entries). With 0.4's real PPMI this happens in practice (the
-   notebook hit it). Returning `None` would match the rest of the API, but it changes
-   public behaviour.
-4. **Read the Docs** needs `build.tools.rust` (set in #11) and Python 3.13 (#16). Please
+   defaults and numbers, removed `M_dense`, sketch mode, `CountMinSketch` and
+   `PPMIComputer`, Python ≥ 3.13, `nan` → `None` from Procrustes). I bumped no
+   versions and published nothing. `publish.yml` is ready (#16).
+2. **Is #23 (`max_memory`) worth merging?** It adds about 600 lines for an exact,
+   fail-loudly memory cap that saves little at the default threshold. Without it,
+   default peaks are 1.2 GB per Hansard decade, about 2.3 GB per GB of Wikipedia,
+   and 3.6 GB at 3 GB. #24 does not depend on it.
+3. **`alpha` = 0.75 vs 1.0.** No smoothing scored 0.012–0.015 ρ higher at 1 GB,
+   which is within benchmark noise. I kept the published 0.75 because the
+   benchmarks only cover frequent words and smoothing protects rare ones. Your
+   call.
+4. **Downstream: kenon.** `PMIEmbedder` uses the default `min_count=100`, which
+   raises "Empty vocabulary" on its small corpora; kenon also needs Python ≥ 3.13.
+   I haven't touched kenon.
+5. **Read the Docs** needs `build.tools.rust` (#11) and Python 3.13 (#16). Please
    check the first RTD build.
-5. **macOS CI runners** were twice cancelled with no runner assigned. Re-runs fixed it
-   both times.
-6. **Tokenizer extras you didn't pick:** Snowball stemming (`rust-stemmers`) and Unicode
-   NFC/NFKC normalisation. Both are small, opt-in additions if you want them later.
+6. **macOS CI runners** were cancelled twice with no runner assigned; re-runs
+   fixed it both times.
+7. **Tokenizer extras not chosen:** Snowball stemming and Unicode normalisation.
+   Both are small, opt-in additions if wanted later.
 
-Resolved since the first batch: defaults confirmed; diachronic corpus (Hansard via
-TheyWorkForYou, #20); notebook (#19); Python 3.13+ (#16); publishing wheels (#16).
+Resolved since the second batch: Procrustes `nan` (#22, now `None`); smoothing
+matching the literature (#22); a memory cap exists (#23).
 
 ## Deliberately left alone, and why
 
@@ -169,7 +216,6 @@ TheyWorkForYou, #20); notebook (#19); Python 3.13+ (#16); publishing wheels (#16
   - the rule that PMI must be positive *before* the shift, which differs from
     `max(0, PMI − log shift)` only when `shift < 1`; documented, not changed
 - **Carried over from the previous summary, still open:**
-  - `ProcrustesAligner.get_word_similarity` returns `nan` on zero-norm vectors (see above)
   - `TopicModel._compute_topic_similarity` returns 0.0 on any error
   - the dense-SVD fallback adds unseeded noise (it now at least warns and is recorded in
     `training_record["svd"]`)
