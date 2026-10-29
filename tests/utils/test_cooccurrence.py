@@ -453,3 +453,64 @@ def test_n_threads_is_validated():
     """``n_threads`` must be a positive integer or None."""
     with pytest.raises(ValueError, match="n_threads"):
         count_cooccurrences(["cat dog"], min_count=1, n_threads=0)
+
+
+# --- bounded memory -------------------------------------------------------------
+
+
+@given(
+    lines=lines_st,
+    budget=st.sampled_from([2048, 16_384, 1 << 20]),
+    min_pair=st.integers(2, 4),
+    window=st.integers(0, 3),
+)
+@COOC
+def test_max_memory_gives_identical_counts(lines, budget, min_pair, window):
+    """The bounded path's counts equal the exact path's for every kept word and
+    pair, whatever the budget: the sketch only decides what is counted.
+    """
+    assume(any(len(w) >= 3 for line in lines for w in line.split()))
+    kw: dict[str, Any] = {
+        "min_count": 1,
+        "min_pair_count": min_pair,
+        "window_size": window,
+    }
+    exact = count_cooccurrences(lines, **kw)
+    try:
+        bounded = count_cooccurrences(lines, max_memory=budget, **kw)
+    except MemoryError:
+        # only legitimate when the exact candidates cannot fit in half the budget
+        assert budget <= 16_384
+        return
+    assert as_tuple(bounded)[:7] == as_tuple(exact)[:7]
+    assert bounded.row_sums.tolist() == exact.row_sums.tolist()
+    assert bounded.col_sums.tolist() == exact.col_sums.tolist()
+    assert bounded.n_types is None
+    mem = bounded.params["memory"]
+    assert mem["pairs"]["kept"] == len(exact.pair_counts)
+    assert mem["pairs"]["candidates"] >= mem["pairs"]["kept"]
+
+
+def test_max_memory_files_and_generators_agree(tmp_path):
+    """Files are read directly; other input is spilled first. Same counts."""
+    f = tmp_path / "c.txt"
+    f.write_text("\n".join(RAW) + "\n", encoding="utf-8")
+    kw: dict[str, Any] = {"min_count": 1, "min_pair_count": 2, "max_memory": "64KB"}
+    a = as_tuple(count_cooccurrences(f, **kw))
+    assert as_tuple(count_cooccurrences(RAW, **kw)) == a
+    assert as_tuple(count_cooccurrences(iter(RAW), **kw)) == a
+    assert as_tuple(count_cooccurrences([line.split() for line in RAW], **kw)) == a
+
+
+def test_max_memory_too_small_raises():
+    """Candidates that cannot fit raise MemoryError instead of silently degrading."""
+    lines = [" ".join(f"w{i}x w{j}y" for j in range(30)) for i in range(60)]
+    with pytest.raises(MemoryError, match="raise max_memory"):
+        count_cooccurrences(lines, min_count=1, min_pair_count=1, max_memory=4096)
+
+
+@pytest.mark.parametrize("bad", ["lots", "-1GB", "0", 0, "5 parsecs"])
+def test_max_memory_must_be_a_size(bad):
+    """Unreadable or non-positive sizes are rejected before any counting."""
+    with pytest.raises(ValueError):
+        count_cooccurrences(["cat dog"], min_count=1, max_memory=bad)

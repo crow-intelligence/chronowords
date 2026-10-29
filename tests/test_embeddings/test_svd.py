@@ -504,3 +504,18 @@ def test_smoothing_parameters_are_validated(kwargs):
     """Alpha must be positive and eig non-negative."""
     with pytest.raises(ValueError):
         SVDAlgebra(**kwargs)
+
+
+def test_max_memory_does_not_change_the_model():
+    """A memory budget changes how counting is done, never what is counted."""
+    a = SVDAlgebra(n_components=3, min_count=1, ppmi_min_count=2)
+    b = SVDAlgebra(n_components=3, min_count=1, ppmi_min_count=2, max_memory="256KB")
+    a.train(SIGNAL_CORPUS)
+    b.train(SIGNAL_CORPUS)
+    assert a.vocabulary == b.vocabulary
+    assert a.ppmi is not None and b.ppmi is not None
+    np.testing.assert_array_equal(a.ppmi.toarray(), b.ppmi.toarray())
+    np.testing.assert_array_equal(a.embeddings, b.embeddings)
+    assert b.training_record is not None
+    assert b.training_record["memory"]["pairs"]["sketch_bytes"] > 0
+    assert b.training_record["n_types"] is None

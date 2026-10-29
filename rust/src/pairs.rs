@@ -95,6 +95,44 @@ impl<K: PairKey> Shard<K> {
     }
 }
 
+impl<K: PairKey> Shard<K> {
+    /// Like [`Shard::add_line`], but count a pair only if `keep(a, b)` and
+    /// without touching the marginals (the bounded path counts those in its
+    /// sketch pass, over every pair).
+    #[inline]
+    pub fn add_line_filtered(
+        &mut self,
+        ids: &[u32],
+        window: usize,
+        shard: u32,
+        n_shards: u32,
+        keep: impl Fn(u32, u32) -> bool,
+    ) {
+        let n = ids.len();
+        for i in 0..n {
+            let a = ids[i];
+            if a == OOV || a % n_shards != shard {
+                continue;
+            }
+            let hi = (i + window + 1).min(n - 1);
+            for &b in &ids[i + 1..=hi] {
+                if b != OOV && keep(a, b) {
+                    let c = self.map.entry(K::pack(a, b)).or_insert(0);
+                    match c.checked_add(1) {
+                        Some(v) => *c = v,
+                        None => self.overflow = true,
+                    }
+                }
+            }
+        }
+    }
+
+    /// Approximate heap bytes held by the map (capacity x entry + control byte).
+    pub fn table_bytes(&self) -> usize {
+        self.map.capacity() * (std::mem::size_of::<(K, u32)>() + 1)
+    }
+}
+
 pub struct PairTable<K> {
     pub shards: Vec<Shard<K>>,
 }

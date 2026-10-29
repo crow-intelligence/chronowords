@@ -3,15 +3,18 @@
 //! Exposed to Python as `chronowords._core`. Python-facing wrappers live in
 //! `chronowords.utils`; this module only takes and returns plain arrays.
 
+mod bounded;
 mod exact;
 mod pairs;
 mod parallel;
+mod sketch;
 mod source;
 mod tokenize;
 
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
-use pyo3::exceptions::{PyOverflowError, PyValueError};
+use pyo3::exceptions::{PyMemoryError, PyOverflowError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 fn require(cond: bool, msg: impl Into<String>) -> PyResult<()> {
     if cond {
@@ -278,6 +281,160 @@ fn count_pairs_files<'py>(
     }
 }
 
+impl From<bounded::BoundedError> for PyErr {
+    fn from(e: bounded::BoundedError) -> PyErr {
+        match e {
+            bounded::BoundedError::Source(s) => s.into(),
+            bounded::BoundedError::Budget(m) => PyMemoryError::new_err(m),
+        }
+    }
+}
+
+fn stats_dict<'py>(py: Python<'py>, st: &bounded::Stats) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("sketch_bytes", st.sketch_bytes)?;
+    d.set_item("candidates", st.candidates)?;
+    d.set_item("table_bytes", st.table_bytes)?;
+    Ok(d)
+}
+
+/// Write a Python iterable of lines or token lists to ``path``, one item per
+/// line, so a multi-pass reader can re-read it. Token lists are validated and
+/// joined as in ``count_words``.
+#[pyfunction]
+#[pyo3(signature = (corpus, path, tokenizer="whitespace"))]
+fn spill_corpus(corpus: &Bound<'_, PyAny>, path: &str, tokenizer: &str) -> PyResult<()> {
+    let tok = make_tokenizer(tokenizer, false, 0)?;
+    let mut spill = source::Spill::create(path)?;
+    source::for_each_py_line(corpus, tok.kind == tokenize::Kind::Whitespace, |line| {
+        spill.write_line(line)?;
+        Ok(())
+    })?;
+    spill.finish()?;
+    Ok(())
+}
+
+/// Exact counts of every token that can reach ``min_count``, under a memory
+/// budget (sketch of ``sketch_bytes`` + exact table of at most
+/// ``table_budget`` bytes). Returns ``(words, counts, total, stats)``.
+#[pyfunction]
+#[pyo3(signature = (paths, min_word_length, min_count, sketch_bytes, table_budget,
+                    tokenizer="whitespace", lowercase=false, n_threads=0,
+                    chunk_bytes=parallel::CHUNK))]
+#[allow(clippy::too_many_arguments)]
+fn count_words_bounded<'py>(
+    py: Python<'py>,
+    paths: Vec<String>,
+    min_word_length: usize,
+    min_count: u64,
+    sketch_bytes: usize,
+    table_budget: usize,
+    tokenizer: &str,
+    lowercase: bool,
+    n_threads: usize,
+    chunk_bytes: u64,
+) -> PyResult<BoundedWords<'py>> {
+    let tok = make_tokenizer(tokenizer, lowercase, min_word_length)?;
+    let (counts, total, st) = py.detach(|| {
+        with_pool(n_threads, || {
+            bounded::count_words(
+                &paths,
+                tok,
+                chunk_bytes,
+                sketch_bytes,
+                table_budget,
+                min_count,
+            )
+        })
+    })??;
+    let mut v: Vec<(String, u64)> = counts.into_iter().collect();
+    v.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let (words, counts): (Vec<String>, Vec<i64>) =
+        v.into_iter().map(|(w, c)| (w, c as i64)).unzip();
+    Ok((words, counts.into_pyarray(py), total, stats_dict(py, &st)?))
+}
+
+type BoundedWords<'py> = (
+    Vec<String>,
+    Bound<'py, PyArray1<i64>>,
+    u64,
+    Bound<'py, PyDict>,
+);
+
+type BoundedPairs<'py> = (
+    Bound<'py, PyArray1<i32>>,
+    Bound<'py, PyArray1<i32>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    u64,
+    Bound<'py, PyDict>,
+);
+
+/// Exact counts of every pair that can reach ``min_pair_count``, exact
+/// marginals and skip-gram total, under a memory budget. Returns
+/// ``(rows, cols, counts, row_sums, col_sums, total, stats)``.
+#[pyfunction]
+#[pyo3(signature = (paths, vocabulary, window, min_word_length, min_pair_count,
+                    sketch_bytes, table_budget, tokenizer="whitespace", lowercase=false,
+                    n_threads=0, chunk_bytes=parallel::CHUNK))]
+#[allow(clippy::too_many_arguments)]
+fn count_pairs_bounded<'py>(
+    py: Python<'py>,
+    paths: Vec<String>,
+    vocabulary: Vec<String>,
+    window: usize,
+    min_word_length: usize,
+    min_pair_count: u32,
+    sketch_bytes: usize,
+    table_budget: usize,
+    tokenizer: &str,
+    lowercase: bool,
+    n_threads: usize,
+    chunk_bytes: u64,
+) -> PyResult<BoundedPairs<'py>> {
+    let tok = make_tokenizer(tokenizer, lowercase, min_word_length)?;
+    check_vocabulary(&vocabulary)?;
+    let run = |compact: bool| {
+        with_pool(n_threads, || {
+            if compact {
+                bounded::count_pairs::<u32>(
+                    &paths,
+                    &vocabulary,
+                    window,
+                    tok,
+                    chunk_bytes,
+                    sketch_bytes,
+                    table_budget,
+                    min_pair_count,
+                )
+            } else {
+                bounded::count_pairs::<u64>(
+                    &paths,
+                    &vocabulary,
+                    window,
+                    tok,
+                    chunk_bytes,
+                    sketch_bytes,
+                    table_budget,
+                    min_pair_count,
+                )
+            }
+        })
+    };
+    let compact = vocabulary.len() <= pairs::COMPACT_MAX_VOCAB;
+    let (coo, total, st) = py.detach(|| run(compact))??;
+    Ok((
+        coo.rows.into_pyarray(py),
+        coo.cols.into_pyarray(py),
+        coo.counts.into_pyarray(py),
+        coo.row_sums.into_pyarray(py),
+        coo.col_sums.into_pyarray(py),
+        total,
+        stats_dict(py, &st)?,
+    ))
+}
+
 /// PPMI with context-distribution smoothing (Levy, Goldberg & Dagan 2015),
 /// from pair counts and the unpruned row/column sums, in O(nnz).
 #[pyfunction]
@@ -338,5 +495,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(count_pairs, m)?)?;
     m.add_function(wrap_pyfunction!(count_pairs_files, m)?)?;
     m.add_function(wrap_pyfunction!(ppmi_from_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(spill_corpus, m)?)?;
+    m.add_function(wrap_pyfunction!(count_words_bounded, m)?)?;
+    m.add_function(wrap_pyfunction!(count_pairs_bounded, m)?)?;
     Ok(())
 }

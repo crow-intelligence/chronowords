@@ -21,6 +21,7 @@ from scipy.spatial.distance import cosine
 from ..utils.cooccurrence import CooccurrenceCounts
 from ..utils.cooccurrence import Corpus
 from ..utils.cooccurrence import count_cooccurrences
+from ..utils.cooccurrence import parse_bytes
 from ..utils.cooccurrence import ppmi_matrix
 
 
@@ -124,6 +125,7 @@ class SVDAlgebra:
         tokenizer: Literal["whitespace", "unicode"] = "whitespace",
         lowercase: bool = False,
         n_threads: int | None = None,
+        max_memory: int | str | None = None,
     ) -> None:
         """Initialize SVDAlgebra.
 
@@ -157,6 +159,11 @@ class SVDAlgebra:
             lowercase: Lowercase tokens before counting. Default ``False``.
             n_threads: Threads for counting file input; ``None`` (default)
                 uses one per CPU core. Does not affect results.
+            max_memory: Memory budget for counting (bytes or e.g. ``"2GB"``);
+                ``None`` (default) for no cap. Does not change the counts or
+                the model: a Count-Min Sketch only decides what is counted
+                exactly. See
+                :func:`~chronowords.utils.cooccurrence.count_cooccurrences`.
 
         Raises:
             ValueError: If a parameter is out of range, or ``tokenizer`` is not
@@ -189,6 +196,8 @@ class SVDAlgebra:
                 raise ValueError(f"{name} must be >= {low}, got {value}")
         if n_threads is not None and n_threads < 1:
             raise ValueError(f"n_threads must be >= 1 or None, got {n_threads}")
+        if max_memory is not None:
+            parse_bytes(max_memory)  # fail early on a malformed size
         if vocab_size is not None and vocab_size < 1:
             raise ValueError(f"vocab_size must be >= 1 or None, got {vocab_size}")
         if shift <= 0:
@@ -210,6 +219,7 @@ class SVDAlgebra:
         self.tokenizer: Literal["whitespace", "unicode"] = tokenizer
         self.lowercase = lowercase
         self.n_threads = n_threads
+        self.max_memory = max_memory
 
         self.vocabulary: list[str] = []
         self._vocab_index: dict[str, int] = {}
@@ -241,6 +251,7 @@ class SVDAlgebra:
             "tokenizer": self.tokenizer,
             "lowercase": self.lowercase,
             "n_threads": self.n_threads,
+            "max_memory": self.max_memory,
         }
 
     def has_vector(self, word: str) -> bool:
@@ -403,6 +414,7 @@ class SVDAlgebra:
             # pairs at or below the PPMI threshold can never get an entry
             min_pair_count=self.ppmi_min_count + 1,
             n_threads=self.n_threads,
+            max_memory=self.max_memory,
         )
         logger.info("Building vocabulary...")
         self.counts = counts
@@ -417,6 +429,7 @@ class SVDAlgebra:
             "skip_total": counts.skip_total,
             "n_types": counts.n_types,
             "pairs_observed": len(counts.pair_counts),
+            "memory": counts.params.get("memory"),
         }
         return M, record
 

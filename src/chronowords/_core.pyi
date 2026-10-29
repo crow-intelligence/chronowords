@@ -67,3 +67,40 @@ def ppmi_from_counts(
     alpha: float = 0.75,
     min_count: int = 5,
 ) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.int32]]: ...
+def spill_corpus(
+    corpus: Iterable[str] | Iterable[Sequence[str]],
+    path: str,
+    tokenizer: str = "whitespace",
+) -> None: ...
+def count_words_bounded(
+    paths: list[str],
+    min_word_length: int,
+    min_count: int,
+    sketch_bytes: int,
+    table_budget: int,
+    tokenizer: str = "whitespace",
+    lowercase: bool = False,
+    n_threads: int = 0,
+    chunk_bytes: int = ...,
+) -> tuple[list[str], NDArray[np.int64], int, dict[str, int]]: ...
+def count_pairs_bounded(
+    paths: list[str],
+    vocabulary: list[str],
+    window: int,
+    min_word_length: int,
+    min_pair_count: int,
+    sketch_bytes: int,
+    table_budget: int,
+    tokenizer: str = "whitespace",
+    lowercase: bool = False,
+    n_threads: int = 0,
+    chunk_bytes: int = ...,
+) -> tuple[
+    NDArray[np.int32],
+    NDArray[np.int32],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    int,
+    dict[str, int],
+]: ...

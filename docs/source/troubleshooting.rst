@@ -75,6 +75,33 @@ because it kept fixed-size Count-Min Sketches and a vocabulary of just 1,084
 words, and its PPMI matrix was dominated by hash-collision artefacts (see
 ``experiments/sketch_accuracy``).
 
+Setting a memory budget
+   Pass ``max_memory`` (bytes, or a string such as ``"2GB"``) to
+   :class:`~chronowords.algebra.svd.SVDAlgebra` or
+   :func:`~chronowords.utils.cooccurrence.count_cooccurrences` to cap the
+   memory used for counting. Half the budget goes to a Count-Min Sketch with
+   conservative update (the design of gensim's *bounter*), which estimates
+   every word and pair count. The other half holds exact counts, but only for
+   words and pairs whose estimate reaches the threshold.
+
+   - **What it guarantees.** A Count-Min Sketch never under-estimates, so a
+     word or pair it rules out truly falls below the threshold. Everything
+     that is kept gets exactly the count it would get without a budget: **the
+     PPMI matrix and the embeddings are identical**. A smaller budget only lets
+     more false candidates into the exact table.
+   - **What it costs.** Two extra passes over the corpus. Input that is not a
+     file is first copied to a temporary file. ``counts.n_types`` (distinct
+     word types) becomes ``None``.
+   - **When it fails.** If the exact candidates still do not fit, training
+     raises :class:`MemoryError` naming the sizes, rather than degrading
+     silently. Raise ``max_memory``, ``min_count`` or ``ppmi_min_count``.
+   - **When it helps.** Only when there is a threshold to filter on:
+     ``SVDAlgebra`` keeps pairs seen more than ``ppmi_min_count`` times, so
+     ``ppmi_min_count=0`` leaves nothing to filter.
+
+   ``training_record["memory"]`` reports the sketch sizes and how many
+   candidates were counted exactly versus kept.
+
 Saving and loading
 ------------------
 

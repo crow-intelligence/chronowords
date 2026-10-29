@@ -83,7 +83,7 @@ pub fn chunks(paths: &[String], target: u64) -> Result<Vec<Chunk>, SourceError> 
 
 /// Read a chunk and call `f` on each of its lines (universal newlines, strict
 /// UTF-8), exactly as `source::for_each_file_line` would.
-fn for_each_chunk_line(
+pub(crate) fn for_each_chunk_line(
     paths: &[String],
     c: &Chunk,
     mut f: impl FnMut(&str),
@@ -144,10 +144,10 @@ pub fn count_words(
 }
 
 /// Vocabulary ids of every line of one chunk, flattened, with line ends.
-struct ChunkIds {
-    ids: Vec<u32>,
-    ends: Vec<usize>,
-    skipgrams: u64,
+pub(crate) struct ChunkIds {
+    pub(crate) ids: Vec<u32>,
+    pub(crate) ends: Vec<usize>,
+    pub(crate) skipgrams: u64,
 }
 
 /// Exact pair counts over files, in parallel. Returns the table and the

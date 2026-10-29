@@ -53,7 +53,8 @@ class CooccurrenceCounts:
             skip-grams in which it is the focus word: the row sums of the full
             co-occurrence matrix, counted *before* ``min_pair_count`` pruning.
         col_sums: The same for the context word (column sums).
-        n_types: Number of distinct token types seen in pass 1.
+        n_types: Number of distinct token types seen in pass 1; ``None`` when
+            counted under ``max_memory`` (types are then only sketched).
         params: The counting parameters and corpus description that produced
             these counts.
 
@@ -68,7 +69,7 @@ class CooccurrenceCounts:
     skip_total: int
     row_sums: NDArray[np.int64]
     col_sums: NDArray[np.int64]
-    n_types: int
+    n_types: int | None
     params: dict[str, Any] = field(default_factory=dict)
 
     def matrix(self) -> csr_matrix:
@@ -121,6 +122,7 @@ def count_cooccurrences(
     lowercase: bool = False,
     min_pair_count: int = 1,
     n_threads: int | None = None,
+    max_memory: int | str | None = None,
 ) -> CooccurrenceCounts:
     """Count words and skip-gram pairs exactly, in two passes.
 
@@ -169,6 +171,19 @@ def count_cooccurrences(
             pair count exceeds the PPMI threshold, so passing
             ``ppmi_min_count + 1`` cuts memory without changing
             :func:`ppmi_matrix`.
+        max_memory: Memory budget for counting, in bytes or as a string
+            such as ``"2GB"`` or ``"512MB"``. ``None`` (default) counts every
+            word type and every observed vocabulary pair exactly, with no cap.
+            With a budget, a Count-Min Sketch with conservative update (half
+            the budget) first estimates every count; only words whose estimate
+            reaches ``min_count`` and pairs whose estimate reaches
+            ``min_pair_count`` are then counted exactly (the other half). A
+            sketch never under-estimates, so **every kept word and pair gets
+            exactly the count the unbounded path gives**. The costs are two
+            extra passes over the corpus (non-file input is first copied to a
+            temporary file), ``n_types`` becoming ``None``, and a
+            :class:`MemoryError` if the exact candidates do not fit. The budget
+            only helps when ``min_pair_count > 1``.
         n_threads: Threads for file input (both passes run in parallel);
             ``None`` (default) uses one per CPU core. Iterables are read on one
             thread. Has no effect on the counts.
@@ -186,6 +201,8 @@ def count_cooccurrences(
             reaches ``min_count`` (an empty vocabulary).
         OSError: If a file cannot be read or the temporary copy cannot be
             written.
+        MemoryError: With ``max_memory``, if the exact candidates exceed the
+            half of the budget left for them.
 
     Examples:
         Hand-computed: "cat dog" three times gives cat=3, dog=3, six tokens,
@@ -224,6 +241,7 @@ def count_cooccurrences(
         raise ValueError(
             f"tokenizer must be 'whitespace' or 'unicode', got {tokenizer!r}"
         )
+    budget = None if max_memory is None else parse_bytes(max_memory)
     if isinstance(corpus, str | bytes):
         raise TypeError(
             "corpus is a single string; pass an iterable of lines, or a "
@@ -242,8 +260,11 @@ def count_cooccurrences(
         "tokenizer": tokenizer,
         "lowercase": lowercase,
         "min_pair_count": min_pair_count,
+        "max_memory": budget,
         "corpus": _describe(corpus, paths),
     }
+    if budget is not None:
+        return _count_bounded(items, paths, params, budget, n_threads or 0)
 
     tok: dict[str, Any] = {"tokenizer": tokenizer, "lowercase": lowercase}
     threads = n_threads or 0
@@ -305,6 +326,104 @@ def count_cooccurrences(
         row_sums=row_sums,
         col_sums=col_sums,
         n_types=len(words),
+        params=params,
+    )
+
+
+def parse_bytes(size: int | str) -> int:
+    """Interpret a memory size: an int (bytes) or a string like ``"1.5GB"``.
+
+    Units are decimal (KB = 1000) or binary (KiB = 1024), case-insensitive.
+
+    Examples:
+        >>> parse_bytes(1024), parse_bytes("2GB"), parse_bytes("512 MiB")
+        (1024, 2000000000, 536870912)
+
+    """
+    if isinstance(size, int):
+        if size <= 0:
+            raise ValueError(f"max_memory must be positive, got {size}")
+        return size
+    units = {
+        "": 1, "b": 1, "kb": 10**3, "mb": 10**6, "gb": 10**9, "tb": 10**12,
+        "kib": 2**10, "mib": 2**20, "gib": 2**30, "tib": 2**40,
+    }  # fmt: skip
+    text = size.strip().lower()
+    number = text.rstrip("abcdefghijklmnopqrstuvwxyz").strip()
+    unit = text[len(number) :].strip()
+    try:
+        value = float(number)
+    except ValueError:
+        value = -1.0
+    if unit not in units or value <= 0:
+        raise ValueError(
+            f"cannot read memory size {size!r}; use e.g. '2GB' or '512MiB'"
+        )
+    return int(value * units[unit])
+
+
+def _count_bounded(
+    items: Iterable[str] | Iterable[Sequence[str]],
+    paths: list[str] | None,
+    params: dict[str, Any],
+    budget: int,
+    threads: int,
+) -> CooccurrenceCounts:
+    """Count under ``max_memory`` for :func:`count_cooccurrences` (four passes)."""
+    sketch, table = budget // 2, budget - budget // 2
+    tok: dict[str, Any] = {
+        "tokenizer": params["tokenizer"],
+        "lowercase": params["lowercase"],
+        "n_threads": threads,
+    }
+    with tempfile.TemporaryDirectory(prefix="chronowords-") as tmp:
+        if paths is None:
+            spill = str(Path(tmp) / "corpus.txt")
+            _core.spill_corpus(items, spill, params["tokenizer"])
+            paths = [spill]
+        words, counts, word_total, word_stats = _core.count_words_bounded(
+            paths, params["min_word_length"], params["min_count"], sketch, table, **tok
+        )
+        keep = int(np.searchsorted(-counts, -params["min_count"], side="right"))
+        if params["vocab_size"] is not None:
+            keep = min(keep, params["vocab_size"])
+        if keep == 0:
+            raise ValueError(
+                f"Empty vocabulary: no word occurs at least "
+                f"min_count={params['min_count']} times. Lower min_count for "
+                f"small corpora."
+            )
+        vocabulary = words[:keep]
+        rows, cols, pcounts, row_sums, col_sums, skip_total, pair_stats = (
+            _core.count_pairs_bounded(
+                paths,
+                vocabulary,
+                params["window_size"],
+                params["min_word_length"],
+                params["min_pair_count"],
+                sketch,
+                table,
+                **tok,
+            )
+        )
+    params = {
+        **params,
+        "memory": {
+            "words": {**word_stats, "kept": keep},
+            "pairs": {**pair_stats, "kept": len(pcounts)},
+        },
+    }
+    return CooccurrenceCounts(
+        vocabulary=vocabulary,
+        word_counts=counts[:keep].copy(),
+        pair_rows=rows,
+        pair_cols=cols,
+        pair_counts=pcounts,
+        word_total=int(word_total),
+        skip_total=int(skip_total),
+        row_sums=row_sums,
+        col_sums=col_sums,
+        n_types=None,
         params=params,
     )
 
