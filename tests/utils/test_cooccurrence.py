@@ -446,7 +446,9 @@ def test_svdalgebra_keeps_only_pairs_that_can_enter_ppmi():
     assert model.counts.params["min_pair_count"] == 6
     full = count_cooccurrences(lines, min_count=1)
     assert model.ppmi is not None
-    np.testing.assert_array_equal(model.ppmi.toarray(), ppmi_matrix(full).toarray())
+    np.testing.assert_array_equal(
+        model.ppmi.toarray(), ppmi_matrix(full, min_count=5).toarray()
+    )
 
 
 def test_n_threads_is_validated():

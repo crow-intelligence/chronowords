@@ -125,6 +125,15 @@ the parameters and corpus that produced them:
    print(counts.word_counts[:3])     # counts of the 3 most frequent words
    print(counts.matrix().nnz)        # distinct observed vocabulary pairs
 
+   print(model.training_record["zero_vectors"])  # words without a vector
+   print(model.has_vector("queen"))
+
+PPMI follows Levy, Goldberg & Dagan (2015). Probabilities come from the
+co-occurrence matrix, and context-distribution smoothing (``alpha=0.75``) damps
+PMI's bias toward rare words. Embeddings are ``U * S**eig`` (``eig=0.5``). All
+three are parameters of :class:`~chronowords.algebra.svd.SVDAlgebra`, and the
+formula is spelled out in :func:`~chronowords.utils.cooccurrence.ppmi_matrix`.
+
 Save and reload a model
 -----------------------
 

@@ -78,3 +78,62 @@ archives.
 uv run python experiments/evaluation/scripts/fetch_benchmarks.py
 experiments/evaluation/scripts/run_grid.sh base
 ```
+
+## Published PPMI (#22): smoothing sweep and chosen defaults
+
+The PPMI formula now follows Levy, Goldberg & Dagan (2015). Marginals come
+from the full co-occurrence matrix, and context-distribution smoothing
+`col(c)**alpha / sum(col**alpha)` is applied on the context side. Same corpora,
+same harness (`scripts/run_smoothing_grid.sh`; records in
+`results/evaluation_published.jsonl`).
+
+| corpus | alpha | ppmi_min_count | eig | zero vectors | WordSim-353 ρ | SimLex-999 ρ | time | peak memory |
+|---|---|---|---|---|---|---|---|---|
+| 100 MB | 1.0 | 0 | 0.5 | 0 | **0.6579** | **0.2736** | 50 s | 0.9 GB |
+| 100 MB | 1.0 | 1 | 0.5 | 0 | **0.6508** | **0.2541** | 24 s | 0.6 GB |
+| 100 MB | 1.0 | 2 | 0.5 | 0 | **0.6412** | **0.2466** | 18 s | 0.5 GB |
+| 100 MB | 1.0 | 5 | 0.5 | 0 | **0.5535** | **0.1504** | 12 s | 0.4 GB |
+| 100 MB | 0.75 | 0 | 0.5 | 0 | **0.6496** | **0.27** | 49 s | 0.9 GB |
+| 100 MB | 0.75 | 1 | 0.5 | 0 | **0.6308** | **0.2598** | 23 s | 0.6 GB |
+| 100 MB | 0.75 | 2 | 0.5 | 0 | **0.6265** | **0.2405** | 15 s | 0.5 GB |
+| 100 MB | 0.75 | 5 | 0.5 | 0 | **0.5268** | **0.1442** | 15 s | 0.4 GB |
+| 100 MB | 0.75 | 1 | 0.0 | 0 | **0.6077** | **0.2545** | 23 s | 0.6 GB |
+| 100 MB | 0.75 | 1 | 1.0 | 0 | **0.5966** | **0.2503** | 22 s | 0.6 GB |
+| 1 GB | 1.0 | 0 | 0.5 | 0 | **0.6864** | **0.3107** | 249 s | 5.0 GB |
+| 1 GB | 1.0 | 1 | 0.5 | 0 | **0.6917** | **0.3063** | 129 s | 2.6 GB |
+| 1 GB | 1.0 | 2 | 0.5 | 1 | **0.6791** | **0.296** | 101 s | 2.0 GB |
+| 1 GB | 0.75 | 0 | 0.5 | 0 | **0.6812** | **0.305** | 234 s | 4.7 GB |
+| 1 GB | 0.75 | 1 | 0.5 | 0 | **0.6766** | **0.2938** | 127 s | 2.5 GB |
+| 1 GB | 0.75 | 2 | 0.5 | 1 | **0.6676** | **0.2851** | 101 s | 2.3 GB |
+| 1 GB | 0.75 | 1 | 0.0 | 0 | **0.6885** | **0.3073** | 124 s | 2.5 GB |
+| 1 GB | 0.75 | 1 | 1.0 | 0 | **0.6109** | **0.2681** | 126 s | 2.6 GB |
+
+### Old formula → published formula (alpha = 0.75, same threshold)
+
+| corpus | ppmi_min_count | WordSim-353 ρ | SimLex-999 ρ | zero vectors |
+|---|---|---|---|---|
+| 100 MB | 5 | 0.4331 → **0.5268** | 0.1159 → **0.1442** | 916 → 0 |
+| 100 MB | 1 | 0.5946 → **0.6308** | 0.2132 → **0.2598** | 0 → 0 |
+| 100 MB | 0 | 0.6252 → **0.6496** | 0.2536 → **0.27** | 0 → 0 |
+| 1 GB | 1 | 0.6241 → **0.6766** | 0.2333 → **0.2938** | 0 → 0 |
+| 1 GB | 0 | 0.6502 → **0.6812** | 0.2756 → **0.305** | 0 → 0 |
+
+### Defaults chosen from this evidence
+
+- **`ppmi_min_count`: 5 → 1.** Dropping pairs seen up to 5 times costs 0.10
+  (WordSim) and 0.12 (SimLex) ρ at 100 MB with the published formula. With the
+  old formula at 1 GB the cost was 0.07 and 0.04. Keeping every pair (0) gains
+  at most 0.01 ρ at 1 GB but needs nearly twice the memory (4.7 vs 2.5 GB); at
+  100 MB it gains 0.01–0.02 ρ.
+  A threshold of 1 also leaves the bounded-memory filter something to filter.
+- **`alpha` stays 0.75**, the published default. `alpha=1` (no smoothing)
+  scores 0.012–0.015 higher at 1 GB; at 100 MB it is 0.02 higher on WordSim
+  and 0.006 lower on SimLex. That is within the noise of benchmarks of 353
+  and 999 pairs, and both benchmarks are dominated by frequent words, whereas
+  smoothing exists to stop rare words from getting inflated PMI. For corpus
+  linguistics on rare words we keep the smoothing. This is a judgement call,
+  recorded here so it can be revisited.
+- **`eig` stays 0.5.** 0 is slightly better at 1 GB and worse at 100 MB; 1 is
+  clearly worse at both.
+
+All three remain parameters of `SVDAlgebra`.

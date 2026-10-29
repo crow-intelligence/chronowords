@@ -451,7 +451,8 @@ def test_empty_ppmi_rows_get_exactly_zero_vectors():
     In exact arithmetic U = M V S^-1 makes such rows zero; the solver leaves
     round-off that normalisation would turn into a random direction.
     """
-    model = SVDAlgebra(n_components=20, min_count=20)
+    # the old default threshold, which leaves many rows empty on this slice
+    model = SVDAlgebra(n_components=20, min_count=20, ppmi_min_count=5)
     model.train(SLICE_1775)
     assert model.ppmi is not None and model.embeddings is not None
     empty = np.diff(model.ppmi.indptr) == 0
@@ -468,7 +469,7 @@ def test_no_neighbour_lacks_a_vector():
     """Regression: on this small slice, 69 of 117 queries used to return
     round-off vectors (pure noise) among their top-5 neighbours.
     """
-    model = SVDAlgebra(n_components=100, min_count=20)
+    model = SVDAlgebra(n_components=100, min_count=20, ppmi_min_count=5)
     model.train(SLICE_1775)
     queried = 0
     for word in model.vocabulary:

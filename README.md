@@ -85,8 +85,6 @@ documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 - **Input validation** — validate constructor and `train`/`fit` inputs (array
   shapes, positive counts, `n_components` / `n_topics` ranges) so invalid input
   fails early with a clear message instead of an opaque NumPy/scikit-learn error.
-- **Configurability** — promote the hard-coded minimum-count threshold (`> 5`) in
-  the PPMI kernel to a named constant / parameter.
 - **Determinism** — seed the dense-SVD fallback so embeddings are reproducible.
 - **Tooling** — wire mutation testing into CI (needs `src`-layout configuration for
   `mutmut`, or an alternative such as `cosmic-ray`).
