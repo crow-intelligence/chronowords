@@ -1,0 +1,12 @@
+{
+  "source": "rsync://data.theyworkforyou.com::parldata/scrapedxml/debates/",
+  "publisher": "TheyWorkForYou / ParlParse (mySociety)",
+  "licence": "Open Parliament Licence v3.0",
+  "files": 20159,
+  "bytes": 8540687860,
+  "listing_sha256": "3e091351f748ba2ae941813d28f4d6b0c9f5c46e1baef21fe26969ca692ec42f",
+  "first": "debates1919-02-04a.xml",
+  "last": "debates2026-10-28a.xml",
+  "other_files": 3,
+  "fetched_at": "2026-10-29T08:29:02+00:00"
+}

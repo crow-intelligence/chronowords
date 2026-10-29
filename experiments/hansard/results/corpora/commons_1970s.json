@@ -1,0 +1,11 @@
+{
+  "decade": "1970s",
+  "sitting_days": 1607,
+  "first": "debates1970-01-19a.xml",
+  "last": "debates1979-12-21a.xml",
+  "paragraphs": 704723,
+  "bytes": 609421750,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1970s.txt"
+}

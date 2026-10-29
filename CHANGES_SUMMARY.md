@@ -3,7 +3,7 @@
 Goal: make "analyse gigabytes of text on a laptop" true. The previous summary (PRs #6–#9,
 all merged) is in git history at `a129b09`.
 
-Six PRs, all green, **none merged**. They are stacked, so merge in this order:
+Eleven PRs, **none merged**, in two batches. They are stacked, so merge in this order:
 
 | order | PR | branch | what |
 |---|---|---|---|
@@ -13,9 +13,53 @@ Six PRs, all green, **none merged**. They are stacked, so merge in this order:
 | 4 | #12 | `phase2-exact-default` | Exact two-pass counting by default; new vocabulary rule; `M_dense` removed |
 | 5 | #13 | `phase3-scale` | Parallel compact counting, Unicode tokenizer, pair pruning |
 | 6 | #15 | `phase4-summary` | Clean before/after benchmarks + this summary |
+| 7 | #16 | `python-313-315` | Python ≥ 3.13 (tested 3.13/3.14/3.15) and CI update, incl. wheel publishing |
+| 8 | #17 | `remove-sketch-mode` | Count-Min Sketch mode removed; exact counting only |
+| 9 | #18 | `icu-tokenizer` | `tokenizer="unicode"` uses ICU4X: Chinese, Japanese, Thai, … |
+| 10 | #19 | `notebook-fix` | Example notebook fixed and re-executed with 0.4 |
+| 11 | #20 | `hansard-diachronic` | Hansard 1919–2026 diachronic experiment + this summary update |
 
 #14 and #11 are independent of each other; both build on #10. #15 merges #14 into the
-#13 chain.
+#13 chain. #16–#18 stack on #15. #19 and #20 each stack on #18 and are independent of
+each other.
+
+## Second batch (2026-10-29), after your answers
+
+You confirmed the defaults, asked for Python 3.13–3.15, a CI update, the Hansard
+corpora, a working notebook, removal of the old counter mode, and ICU4X.
+
+- **#16 — Python and CI.**
+  - `requires-python = ">=3.13"`, with abi3-py313 wheels. The full suite passes locally
+    on CPython 3.13.13, 3.14.10 and 3.15.2. The lock is upgraded to numpy 2.5 / scipy 1.18
+    / scikit-learn 1.9, which all ship 3.15 wheels.
+  - The notebook/data `examples` dependency group is skipped on 3.15, because spaCy and
+    altair's `rpds-py` have no 3.15 builds yet.
+  - CI tests 3.13–3.15 on Linux, 3.13 and 3.15 on macOS, and 3.15 on Windows. It pins the
+    matrix interpreter with `UV_PYTHON`; before, uv could silently use another Python.
+  - The duplicate `ci.yml` with its dead deploy job is removed.
+  - **`publish.yml` now builds and uploads all wheels plus the sdist** on a release,
+    using the existing `PYPI_TOKEN`.
+- **#17 — sketch mode removed:** `counting=`, `cms_*`, `PPMIComputer`, `CountMinSketch`,
+  the Rust sketch kernel and the murmur hash; +79 / −1,905 lines. The tests keep an
+  nltk-anchored reference for skip-grams without depending on nltk.
+- **#18 — ICU4X.**
+  - Chinese: 我们 · 今天 · 北京 · 大学 instead of single characters. Thai: วัน · นี้ ·
+    อากาศ instead of fragments.
+  - On alphabetic text, tokens differ from the old UAX #29 tokenizer by 0.0002–0.033%,
+    at the same speed. The wheel is 2.4 MB.
+- **#19 — notebook.** Runs end to end on 0.4 with no errors and no warnings. Periods too
+  small for 100 dimensions are skipped (2025–2049 has one speech).
+- **#20 — Hansard.**
+  - Data: every Commons debate from 1919 to Oct 2026 (TheyWorkForYou / ParlParse, Open
+    Parliament Licence) — 15,543 sitting days, 5.5 GB of text, 738 M tokens, no parse
+    failures.
+  - Training: one model per decade, **4.5 minutes in total, ≤ 1.03 GB of memory per
+    decade**.
+  - Results: control words shift 0.10–0.17 on average; words with known changes shift
+    0.4–0.8, and their neighbours show it. *cell*: prison → stem cells → gene therapy.
+    *virus*: HIV → pandemic flu → covid. *climate*: soil → Kyoto → warming. *gay*,
+    *mobile*, *web* change as expected.
+  - Caveats are written up in `experiments/hansard/README.md`.
 
 ## Headline numbers
 
@@ -56,7 +100,7 @@ keeps only ~1,100 words and shrinks as the corpus grows; and 62–79% of PPMI ce
 nonzero, which is sketch-collision noise.
 
 **#11 — Phase 1, Rust core.** maturin with an `abi3-py310` extension, so one wheel per
-platform covers Python 3.10–3.13+. `PPMIComputer` is reimplemented in Rust, bit-compatible
+platform covers Python 3.10–3.13+ (floor raised to 3.13 in #16). `PPMIComputer` is reimplemented in Rust, bit-compatible
 with `mmh3`, and reproduces the frozen output of the fixed Cython kernel. Exact counting
 primitives are added. CI gets a Rust job and a **build-only** wheels workflow (Linux
 x86_64/aarch64, macOS arm64/x86_64, Windows). `experiments/sketch_accuracy`: at least 82% of
@@ -81,42 +125,28 @@ sketch PPMI entries on the 23.5 MB presidential corpus are collision artefacts.
 
 ## Needs your decision
 
-1. **Releases.** #10 alone is a good **0.3.1** hotfix. #11–#13 change defaults and numbers
-   and remove `M_dense`, so they are **0.4.0**. I bumped no versions and published nothing.
-2. **Publishing.** `publish.yml` uploads an **sdist only**. With a Rust extension, anyone
-   installing from that sdist needs `cargo`. Before 0.4.0, publishing should upload the
-   `wheels.yml` artifacts. I didn't touch the publish workflows because they hold the PyPI
-   secret. (The `deploy` job in `ci.yml` is unreachable: it triggers on pushes to `develop`
-   but requires `main`.)
-3. **Downstream: kenon.** `PMIEmbedder` trains `SVDAlgebra` on small corpora with default
-   arguments. Under `min_count=100` that now raises "Empty vocabulary", and kenon's 2-line
-   doctest will fail against 0.4. It needs to pass or expose `min_count`. I haven't touched
-   kenon.
-4. **Defaults that change the numbers** — all exposed and documented, please confirm:
-   - `counting="exact"` (was a Count-Min Sketch)
-   - `vocab_size=50_000`, `min_count=100` (was words above 0.01% of tokens)
-   - `ppmi_min_count=5`, unchanged but now a parameter
-   - `tokenizer="whitespace"`, `lowercase=False` (unchanged behaviour)
-   - Unchanged: `window_size=5`, `min_word_length=3`, `alpha=0.75`, `shift=1.0`,
-     `n_components=300`.
-5. **A diachronic corpus for benchmarks.** UK Hansard's archive page says "All
-   Parliamentary copyrights are reserved". The Open Parliament Licence page sits behind a
-   Cloudflare challenge, so I couldn't verify it and downloaded nothing. `parlamonitor` is
-   too small (~32 MB). Please pick or confirm a corpus.
-6. **`examples/presidential_speeches.ipynb`.** Its code is updated for the new API
-   (`min_count=20` per slice; topics from `model.ppmi`), but it is **not re-executed**, so
-   its stored outputs are from 0.3.x, i.e. noise embeddings. Re-running it is blocked by two
-   issues that predate this work: cell 1 runs `!pip install chronowords`, which would pull
-   0.3.0 from PyPI, and the data path `../data/speeches_lemmatized.json` doesn't match
-   `data/corpus/`.
-7. **Read the Docs** now needs `build.tools.rust` (set to `"latest"` in #11). Please check
-   the first RTD build.
-8. **Python 3.13.** The abi3 wheel already covers it. Lifting `requires-python` and adding
-   3.13 to the CI matrix is now a two-line change; I didn't make it because it's a support
-   commitment.
-9. **macOS CI runners.** Twice a macOS job was cancelled after 15 minutes with no steps run
-   (no runner assigned). Re-running fixed it both times. If it keeps happening, consider
-   trimming the macOS test matrix.
+Still open:
+
+1. **Releases.** #10 alone is a good **0.3.1** hotfix; the rest is **0.4.0** (breaking:
+   defaults, numbers, removed `M_dense`, sketch mode, `CountMinSketch`, `PPMIComputer`,
+   Python ≥ 3.13). I bumped no versions and published nothing. `publish.yml` is ready
+   (#16).
+2. **Downstream: kenon.** `PMIEmbedder` trains on small corpora with the default
+   `min_count=100`, which now raises "Empty vocabulary"; its 2-line doctest will fail
+   against 0.4. kenon also needs Python ≥ 3.13 to install 0.4. I haven't touched kenon.
+3. **`ProcrustesAligner.get_word_similarity` returns `nan`** for a word whose embedding
+   is all zero (no PPMI entries). With 0.4's real PPMI this happens in practice (the
+   notebook hit it). Returning `None` would match the rest of the API, but it changes
+   public behaviour.
+4. **Read the Docs** needs `build.tools.rust` (set in #11) and Python 3.13 (#16). Please
+   check the first RTD build.
+5. **macOS CI runners** were twice cancelled with no runner assigned. Re-runs fixed it
+   both times.
+6. **Tokenizer extras you didn't pick:** Snowball stemming (`rust-stemmers`) and Unicode
+   NFC/NFKC normalisation. Both are small, opt-in additions if you want them later.
+
+Resolved since the first batch: defaults confirmed; diachronic corpus (Hansard via
+TheyWorkForYou, #20); notebook (#19); Python 3.13+ (#16); publishing wheels (#16).
 
 ## Deliberately left alone, and why
 
@@ -124,12 +154,12 @@ sketch PPMI entries on the 23.5 MB presidential corpus are collision artefacts.
   for it: distinct pairs level off, and 3 GB of English peaks well under 3 GB of RAM. A
   GloVe-style design (sorted runs on disk, then a k-way merge with pruning) is sketched in
   #13 if the target ever becomes ≫10 GB corpora or 8 GB machines.
-- **A Rust conservative-update Count-Min Sketch / Space-Saving mode.** Sketch mode is still
-  a Python counting loop. Accuracy data argues against it, so I didn't speed up a mode that
-  should rarely be used.
+- **Count-Min Sketch:** removed entirely (#17), on your decision.
 - **Hugging Face `tokenizers`.** They produce subwords, which is the wrong unit for
   word-level semantic change. The Rust core offers `str.split()`-identical whitespace
-  tokenisation, UAX #29 words, and pre-tokenised input instead. Lemmatisation stays upstream
+  tokenisation, ICU4X word segmentation (#18), and pre-tokenised input instead.
+  charabia, lindera and jieba-rs were considered and not added: they bring large
+  dictionaries into the core. Lemmatisation stays upstream
   (spaCy).
 - **SVD, NMF and Procrustes stay in scipy/scikit-learn.** They already run in LAPACK/BLAS;
   a Rust rewrite gains nothing.
@@ -139,16 +169,17 @@ sketch PPMI entries on the 23.5 MB presidential corpus are collision artefacts.
   - the rule that PMI must be positive *before* the shift, which differs from
     `max(0, PMI − log shift)` only when `shift < 1`; documented, not changed
 - **Carried over from the previous summary, still open:**
-  - `CountMinSketch.estimate_error` ignores `confidence`
-  - `ProcrustesAligner.get_word_similarity` returns `nan` on zero-norm vectors
+  - `ProcrustesAligner.get_word_similarity` returns `nan` on zero-norm vectors (see above)
   - `TopicModel._compute_topic_similarity` returns 0.0 on any error
   - the dense-SVD fallback adds unseeded noise (it now at least warns and is recorded in
     `training_record["svd"]`)
-  - `CountMinSketch.get_heavy_hitters` orders count ties by set iteration order, which
-    depends on the hash seed. `SVDAlgebra` no longer relies on it, but the public method
-    is unchanged.
-- **`main`**: never touched. No force-pushes, no PyPI, no CI secrets. `kenon` was not
-  modified.
+- **Hansard before 1919.** The parliament.uk Hansard archive (1803–2005) did not respond
+  to requests, so the experiment starts in 1919 (TheyWorkForYou's coverage).
+- **`main`**: never touched. No force-pushes, no PyPI. The CI secret is referenced
+  unchanged. `kenon` was not modified.
+- **Local tooling:** `uv` was upgraded from 0.11.7 to 0.13.6 to get Python 3.15.2
+  (revert with `uv self update 0.11.7`). Python 3.13, 3.14 and 3.15 were installed with
+  uv.
 
 ## How to verify locally
 
