@@ -8,9 +8,17 @@ re-fetchable, so they are **gitignored**; each one has a committed
 |------|--------|---------|------------|
 | `wikipedia/20231101.hu/` | [wikimedia/wikipedia](https://huggingface.co/datasets/wikimedia/wikipedia), Hungarian, all 4 shards | CC BY-SA 4.0 / GFDL | `experiments/scaling/scripts/fetch_wikipedia.py hu` |
 | `wikipedia/20231101.en/` | same, English, shards 0–7 of 41 | CC BY-SA 4.0 / GFDL | `experiments/scaling/scripts/fetch_wikipedia.py en --shards 0-7` |
+| `hansard/debates/` | House of Commons debates XML, 1919–today, all versions, via [TheyWorkForYou / ParlParse](https://parser.theyworkforyou.com/) (mySociety), rsync `data.theyworkforyou.com::parldata/scrapedxml/debates/` | Open Parliament Licence v3.0 | `experiments/hansard/scripts/fetch_hansard.sh` |
 
-Attribution: Wikipedia text © Wikipedia contributors, CC BY-SA 4.0. Derived
-corpora built from it (`data/derived/`, gitignored) inherit that licence.
+Attribution:
+
+- Wikipedia text © Wikipedia contributors, CC BY-SA 4.0. Derived corpora built
+  from it (`data/derived/`, gitignored) inherit that licence.
+- Hansard: *Contains Parliamentary information licensed under the Open
+  Parliament Licence v3.0.* XML prepared by TheyWorkForYou / ParlParse
+  (mySociety). The Hansard mirror has a single manifest,
+  `hansard/debates.manifest.json`, listing file count, total size and a SHA-256
+  of the file listing.
 
 Derived text is rebuilt with
 `experiments/scaling/scripts/prepare_wikipedia.py`; see
