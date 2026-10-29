@@ -1,0 +1,2262 @@
+{
+  "decades": [
+    "1910s",
+    "1920s",
+    "1930s",
+    "1940s",
+    "1950s",
+    "1960s",
+    "1970s",
+    "1980s",
+    "1990s",
+    "2000s",
+    "2010s",
+    "2020s"
+  ],
+  "params": {
+    "tokenizer": "unicode",
+    "lowercase": true
+  },
+  "targets": [
+    "gay",
+    "wireless",
+    "broadcast",
+    "computer",
+    "web",
+    "mobile",
+    "cell",
+    "network",
+    "virus",
+    "green",
+    "environment",
+    "climate",
+    "terror",
+    "immigration",
+    "europe",
+    "empire",
+    "commonwealth",
+    "house",
+    "water"
+  ],
+  "transitions": [
+    {
+      "from": "1910s",
+      "to": "1920s",
+      "aligned_words": 911,
+      "average_cosine_similarity": 0.8336,
+      "shifts": {
+        "wireless": 0.7796,
+        "green": 0.9686,
+        "europe": 0.3227,
+        "empire": 0.2075,
+        "house": 0.1653,
+        "water": 0.171
+      }
+    },
+    {
+      "from": "1920s",
+      "to": "1930s",
+      "aligned_words": 924,
+      "average_cosine_similarity": 0.9245,
+      "shifts": {
+        "wireless": 0.3114,
+        "broadcast": 0.4871,
+        "mobile": 0.6707,
+        "green": 0.4509,
+        "environment": 0.4889,
+        "climate": 0.4514,
+        "terror": 0.6026,
+        "immigration": 0.5224,
+        "europe": 0.135,
+        "empire": 0.0665,
+        "commonwealth": 0.3044,
+        "house": 0.0606,
+        "water": 0.0909
+      }
+    },
+    {
+      "from": "1930s",
+      "to": "1940s",
+      "aligned_words": 889,
+      "average_cosine_similarity": 0.9143,
+      "shifts": {
+        "wireless": 0.3417,
+        "broadcast": 0.3135,
+        "mobile": 0.6083,
+        "cell": 0.5324,
+        "network": 0.568,
+        "green": 0.4643,
+        "environment": 0.4683,
+        "climate": 0.4406,
+        "terror": 0.5011,
+        "immigration": 0.4239,
+        "europe": 0.1225,
+        "empire": 0.1089,
+        "commonwealth": 0.2269,
+        "house": 0.1248,
+        "water": 0.0775
+      }
+    },
+    {
+      "from": "1940s",
+      "to": "1950s",
+      "aligned_words": 909,
+      "average_cosine_similarity": 0.9214,
+      "shifts": {
+        "wireless": 0.3604,
+        "broadcast": 0.2678,
+        "mobile": 0.4829,
+        "cell": 0.5269,
+        "network": 0.4874,
+        "green": 0.5291,
+        "environment": 0.4058,
+        "climate": 0.5144,
+        "terror": 0.6161,
+        "immigration": 0.5337,
+        "europe": 0.1027,
+        "empire": 0.2321,
+        "commonwealth": 0.1848,
+        "house": 0.0553,
+        "water": 0.0672
+      }
+    },
+    {
+      "from": "1950s",
+      "to": "1960s",
+      "aligned_words": 930,
+      "average_cosine_similarity": 0.9326,
+      "shifts": {
+        "wireless": 0.3212,
+        "broadcast": 0.236,
+        "mobile": 0.4606,
+        "cell": 0.4248,
+        "network": 0.454,
+        "virus": 0.3316,
+        "green": 0.3669,
+        "environment": 0.495,
+        "climate": 0.2951,
+        "terror": 0.734,
+        "immigration": 0.3408,
+        "europe": 0.0624,
+        "empire": 0.4802,
+        "commonwealth": 0.0956,
+        "house": 0.0533,
+        "water": 0.0507
+      }
+    },
+    {
+      "from": "1960s",
+      "to": "1970s",
+      "aligned_words": 910,
+      "average_cosine_similarity": 0.9285,
+      "shifts": {
+        "wireless": 0.4985,
+        "broadcast": 0.1681,
+        "computer": 0.4039,
+        "mobile": 0.6036,
+        "cell": 0.4634,
+        "network": 0.3097,
+        "green": 0.492,
+        "environment": 0.5928,
+        "climate": 0.3005,
+        "terror": 0.6135,
+        "immigration": 0.2703,
+        "europe": 0.0568,
+        "empire": 0.4163,
+        "commonwealth": 0.1059,
+        "house": 0.0543,
+        "water": 0.0743
+      }
+    },
+    {
+      "from": "1970s",
+      "to": "1980s",
+      "aligned_words": 918,
+      "average_cosine_similarity": 0.9296,
+      "shifts": {
+        "wireless": 0.5221,
+        "broadcast": 0.21,
+        "computer": 0.2891,
+        "web": 0.7782,
+        "mobile": 0.3805,
+        "cell": 0.4117,
+        "network": 0.2398,
+        "green": 0.3349,
+        "environment": 0.1253,
+        "climate": 0.2098,
+        "terror": 0.3519,
+        "immigration": 0.2513,
+        "europe": 0.0519,
+        "empire": 0.4316,
+        "commonwealth": 0.228,
+        "house": 0.0954,
+        "water": 0.0662
+      }
+    },
+    {
+      "from": "1980s",
+      "to": "1990s",
+      "aligned_words": 907,
+      "average_cosine_similarity": 0.9327,
+      "shifts": {
+        "gay": 0.5372,
+        "wireless": 0.5072,
+        "broadcast": 0.1642,
+        "computer": 0.2481,
+        "web": 0.6929,
+        "mobile": 0.5164,
+        "cell": 0.4296,
+        "network": 0.1679,
+        "virus": 0.5014,
+        "green": 0.2517,
+        "environment": 0.0965,
+        "climate": 0.2762,
+        "terror": 0.3523,
+        "immigration": 0.2457,
+        "europe": 0.0807,
+        "empire": 0.4542,
+        "commonwealth": 0.2756,
+        "house": 0.0387,
+        "water": 0.0652
+      }
+    },
+    {
+      "from": "1990s",
+      "to": "2000s",
+      "aligned_words": 913,
+      "average_cosine_similarity": 0.9187,
+      "shifts": {
+        "gay": 0.5048,
+        "broadcast": 0.3393,
+        "computer": 0.3144,
+        "web": 0.5758,
+        "mobile": 0.5442,
+        "cell": 0.6233,
+        "network": 0.1985,
+        "virus": 0.6946,
+        "green": 0.1404,
+        "environment": 0.1276,
+        "climate": 0.3927,
+        "terror": 0.3723,
+        "immigration": 0.2862,
+        "europe": 0.0921,
+        "empire": 0.5027,
+        "commonwealth": 0.3566,
+        "house": 0.0548,
+        "water": 0.0864
+      }
+    },
+    {
+      "from": "2000s",
+      "to": "2010s",
+      "aligned_words": 908,
+      "average_cosine_similarity": 0.9155,
+      "shifts": {
+        "gay": 0.5096,
+        "broadcast": 0.3422,
+        "computer": 0.3169,
+        "web": 0.4915,
+        "mobile": 0.3987,
+        "cell": 0.6022,
+        "network": 0.1211,
+        "virus": 0.7159,
+        "green": 0.1608,
+        "environment": 0.087,
+        "climate": 0.1043,
+        "terror": 0.3484,
+        "immigration": 0.2854,
+        "europe": 0.1053,
+        "empire": 0.5114,
+        "commonwealth": 0.3237,
+        "house": 0.0954,
+        "water": 0.0657
+      }
+    },
+    {
+      "from": "2010s",
+      "to": "2020s",
+      "aligned_words": 900,
+      "average_cosine_similarity": 0.9168,
+      "shifts": {
+        "gay": 0.4044,
+        "broadcast": 0.3257,
+        "computer": 0.3683,
+        "web": 0.5547,
+        "mobile": 0.2854,
+        "cell": 0.5813,
+        "network": 0.0907,
+        "virus": 0.6215,
+        "green": 0.1444,
+        "environment": 0.0641,
+        "climate": 0.101,
+        "terror": 0.3636,
+        "immigration": 0.1164,
+        "europe": 0.1042,
+        "empire": 0.5183,
+        "commonwealth": 0.2337,
+        "house": 0.0556,
+        "water": 0.1009
+      }
+    }
+  ],
+  "neighbours": {
+    "gay": {
+      "1980s": [
+        "lesbian",
+        "homosexuals",
+        "homosexual",
+        "lesbians",
+        "homosexuality",
+        "heterosexual",
+        "women's",
+        "images"
+      ],
+      "1990s": [
+        "homosexual",
+        "heterosexual",
+        "consenting",
+        "homosexuals",
+        "sexuality",
+        "intercourse",
+        "lesbian",
+        "consensual"
+      ],
+      "2000s": [
+        "lesbian",
+        "homosexual",
+        "discriminate",
+        "sex",
+        "married",
+        "homosexuality",
+        "marriage",
+        "sexuality"
+      ],
+      "2010s": [
+        "lesbian",
+        "bisexual",
+        "lgbt",
+        "heterosexual",
+        "marriage",
+        "sex",
+        "transgender",
+        "married"
+      ],
+      "2020s": [
+        "lesbian",
+        "lesbians",
+        "bisexual",
+        "lgbt",
+        "trans",
+        "transgender",
+        "lgbtq",
+        "openly"
+      ]
+    },
+    "wireless": {
+      "1910s": [
+        "fitted",
+        "merchant",
+        "tonnage",
+        "machine",
+        "fire",
+        "ships",
+        "guns",
+        "ship"
+      ],
+      "1920s": [
+        "beam",
+        "cable",
+        "cables",
+        "telegraph",
+        "broadcasting",
+        "telegraphy",
+        "marconi",
+        "messages"
+      ],
+      "1930s": [
+        "radio",
+        "relay",
+        "beam",
+        "telegraphy",
+        "telephone",
+        "broadcasting",
+        "messages",
+        "broadcast"
+      ],
+      "1940s": [
+        "radio",
+        "television",
+        "radar",
+        "cables",
+        "broadcasting",
+        "frequency",
+        "cable",
+        "b.b.c"
+      ],
+      "1950s": [
+        "radio",
+        "television",
+        "relay",
+        "v.h.f",
+        "broadcasting",
+        "frequency",
+        "b.b.c",
+        "sets"
+      ],
+      "1960s": [
+        "radio",
+        "t.v",
+        "v.h.f",
+        "television",
+        "relay",
+        "broadcasting",
+        "transmitting",
+        "pirate"
+      ],
+      "1970s": [
+        "cable",
+        "telephones",
+        "telecommunications",
+        "radio",
+        "625",
+        "television",
+        "rio",
+        "freightliners"
+      ],
+      "1980s": [
+        "telecom",
+        "cable",
+        "amersham",
+        "ferranti",
+        "shareholding",
+        "mercury",
+        "aerospace",
+        "digital"
+      ],
+      "1990s": [
+        "cable",
+        "telecommunications",
+        "mercury",
+        "telecom",
+        "optic",
+        "communications",
+        "radio",
+        "networks"
+      ],
+      "2010s": [
+        "mobile",
+        "fibre",
+        "broadband",
+        "masts",
+        "satellite",
+        "superfast",
+        "coverage",
+        "telephony"
+      ]
+    },
+    "broadcast": {
+      "1920s": [
+        "broadcasting",
+        "messages",
+        "wireless",
+        "wave",
+        "transmitted",
+        "news",
+        "reception",
+        "marconi"
+      ],
+      "1930s": [
+        "broadcasting",
+        "broadcasts",
+        "b.b.c",
+        "relay",
+        "arabic",
+        "programmes",
+        "wireless",
+        "messages"
+      ],
+      "1940s": [
+        "broadcasts",
+        "broadcasting",
+        "b.b.c",
+        "bulletins",
+        "news",
+        "listeners",
+        "audience",
+        "wave"
+      ],
+      "1950s": [
+        "broadcasting",
+        "b.b.c",
+        "broadcasts",
+        "television",
+        "programmes",
+        "relay",
+        "bulletins",
+        "listeners"
+      ],
+      "1960s": [
+        "broadcasting",
+        "broadcasts",
+        "television",
+        "panorama",
+        "radio",
+        "b.b.c",
+        "i.t.v",
+        "i.t.a"
+      ],
+      "1970s": [
+        "radio",
+        "bbc",
+        "b.b.c",
+        "television",
+        "broadcasts",
+        "broadcasting",
+        "news",
+        "panorama"
+      ],
+      "1980s": [
+        "bbc",
+        "broadcasting",
+        "television",
+        "radio",
+        "broadcasts",
+        "terrestrial",
+        "itv",
+        "iba"
+      ],
+      "1990s": [
+        "broadcasts",
+        "bbc",
+        "broadcasting",
+        "radio",
+        "television",
+        "terrestrial",
+        "broadcasters",
+        "viewers"
+      ],
+      "2000s": [
+        "radio",
+        "television",
+        "itv",
+        "bbc",
+        "broadcasters",
+        "broadcasting",
+        "terrestrial",
+        "digital"
+      ],
+      "2010s": [
+        "television",
+        "radio",
+        "broadcasting",
+        "itv",
+        "broadcasters",
+        "bbc",
+        "broadcaster",
+        "listeners"
+      ],
+      "2020s": [
+        "television",
+        "broadcasters",
+        "broadcasting",
+        "bbc",
+        "radio",
+        "bbc’s",
+        "itv",
+        "viewers"
+      ]
+    },
+    "computer": {
+      "1960s": [
+        "computers",
+        "electronic",
+        "data",
+        "electronics",
+        "automation",
+        "telecommunications",
+        "techniques",
+        "machine"
+      ],
+      "1970s": [
+        "computers",
+        "computerised",
+        "data",
+        "electronic",
+        "computerisation",
+        "records",
+        "tapes",
+        "filing"
+      ],
+      "1980s": [
+        "computers",
+        "software",
+        "computerised",
+        "data",
+        "electronic",
+        "microelectronics",
+        "robotics",
+        "technology"
+      ],
+      "1990s": [
+        "computers",
+        "software",
+        "electronic",
+        "computerised",
+        "data",
+        "internet",
+        "interactive",
+        "communications"
+      ],
+      "2000s": [
+        "computers",
+        "software",
+        "communications",
+        "electronic",
+        "encrypted",
+        "telephones",
+        "internet",
+        "electronically"
+      ],
+      "2010s": [
+        "software",
+        "computers",
+        "internet",
+        "digital",
+        "technology",
+        "app",
+        "online",
+        "web"
+      ],
+      "2020s": [
+        "software",
+        "artificial",
+        "automated",
+        "computing",
+        "cloud",
+        "computers",
+        "digital",
+        "satellite"
+      ]
+    },
+    "web": {
+      "1970s": [
+        "perils",
+        "cordial",
+        "teething",
+        "harmonious",
+        "roost",
+        "poisoned",
+        "fraught",
+        "fundamentals"
+      ],
+      "1980s": [
+        "bureaucratic",
+        "bureaucracy",
+        "hedged",
+        "freed",
+        "relaxing",
+        "veil",
+        "jungle",
+        "shackles"
+      ],
+      "1990s": [
+        "internet",
+        "website",
+        "networks",
+        "tape",
+        "interactive",
+        "secrecy",
+        "optic",
+        "sleaze"
+      ],
+      "2000s": [
+        "internet",
+        "websites",
+        "online",
+        "images",
+        "website",
+        "accessed",
+        "photographs",
+        "posted"
+      ],
+      "2010s": [
+        "internet",
+        "facebook",
+        "websites",
+        "online",
+        "twitter",
+        "google",
+        "youtube",
+        "download"
+      ],
+      "2020s": [
+        "algorithms",
+        "regulating",
+        "websites",
+        "facebook",
+        "internet",
+        "paedophile",
+        "apps",
+        "jeffrey"
+      ]
+    },
+    "mobile": {
+      "1920s": [
+        "mobility",
+        "arm",
+        "mobilisation",
+        "defence",
+        "units",
+        "strategy",
+        "aerial",
+        "artillery"
+      ],
+      "1930s": [
+        "armoured",
+        "tank",
+        "artillery",
+        "brigades",
+        "infantry",
+        "antiaircraft",
+        "battalions",
+        "mobility"
+      ],
+      "1940s": [
+        "static",
+        "armoured",
+        "infantry",
+        "units",
+        "canteens",
+        "a.a",
+        "formations",
+        "battalions"
+      ],
+      "1950s": [
+        "formations",
+        "cadre",
+        "mobilised",
+        "units",
+        "nucleus",
+        "airborne",
+        "mobility",
+        "brigades"
+      ],
+      "1960s": [
+        "equipped",
+        "vans",
+        "helicopters",
+        "seaborne",
+        "shops",
+        "airborne",
+        "static",
+        "mobility"
+      ],
+      "1970s": [
+        "caravan",
+        "caravans",
+        "sites",
+        "pitches",
+        "gipsies",
+        "permanent",
+        "gipsy",
+        "site"
+      ],
+      "1980s": [
+        "caravan",
+        "occupiers",
+        "caravans",
+        "residential",
+        "owner",
+        "site",
+        "owners",
+        "camping"
+      ],
+      "1990s": [
+        "telephone",
+        "telephones",
+        "communications",
+        "phone",
+        "internet",
+        "interception",
+        "telecommunications",
+        "computers"
+      ],
+      "2000s": [
+        "phone",
+        "phones",
+        "telephones",
+        "telephone",
+        "masts",
+        "telecommunications",
+        "computers",
+        "siting"
+      ],
+      "2010s": [
+        "phone",
+        "phones",
+        "wireless",
+        "masts",
+        "telephones",
+        "broadband",
+        "telephony",
+        "telephone"
+      ],
+      "2020s": [
+        "broadband",
+        "phone",
+        "fibre",
+        "internet",
+        "gigabit",
+        "superfast",
+        "devices",
+        "phones"
+      ]
+    },
+    "cell": {
+      "1930s": [
+        "cells",
+        "warders",
+        "prisoner",
+        "locked",
+        "prison",
+        "warder",
+        "doors",
+        "dartmoor"
+      ],
+      "1940s": [
+        "cells",
+        "confinement",
+        "prison",
+        "bedroom",
+        "holloway",
+        "locked",
+        "doors",
+        "solitary"
+      ],
+      "1950s": [
+        "cells",
+        "prisons",
+        "prison",
+        "sleeping",
+        "prisoners",
+        "warders",
+        "prisoner",
+        "locked"
+      ],
+      "1960s": [
+        "cells",
+        "solitary",
+        "confinement",
+        "wormwood",
+        "holloway",
+        "prisons",
+        "scrubs",
+        "prisoners"
+      ],
+      "1970s": [
+        "cells",
+        "prisoners",
+        "maze",
+        "prisons",
+        "prison",
+        "prisoner",
+        "incarcerated",
+        "locked"
+      ],
+      "1980s": [
+        "cells",
+        "prisoners",
+        "inmates",
+        "scrubs",
+        "prison",
+        "prisoner",
+        "locked",
+        "prisons"
+      ],
+      "1990s": [
+        "cells",
+        "strangeways",
+        "gene",
+        "prisons",
+        "inmates",
+        "prison",
+        "remand",
+        "prisoners"
+      ],
+      "2000s": [
+        "stem",
+        "embryonic",
+        "cells",
+        "embryo",
+        "embryos",
+        "cloning",
+        "technique",
+        "admixed"
+      ],
+      "2010s": [
+        "transplant",
+        "transplants",
+        "cord",
+        "organ",
+        "transplantation",
+        "cells",
+        "stem",
+        "donation"
+      ],
+      "2020s": [
+        "battery",
+        "transplant",
+        "leukaemia",
+        "chemotherapy",
+        "kidney",
+        "cells",
+        "brain",
+        "breast"
+      ]
+    },
+    "network": {
+      "1930s": [
+        "trunk",
+        "mileage",
+        "cables",
+        "electrified",
+        "arterial",
+        "telephone",
+        "wires",
+        "railways"
+      ],
+      "1940s": [
+        "cable",
+        "trunk",
+        "cables",
+        "telecommunications",
+        "wireless",
+        "routes",
+        "telegraph",
+        "wires"
+      ],
+      "1950s": [
+        "feeder",
+        "trunk",
+        "services",
+        "routes",
+        "unremunerative",
+        "depots",
+        "transport",
+        "transmission"
+      ],
+      "1960s": [
+        "trunk",
+        "communications",
+        "transmission",
+        "motorway",
+        "mileage",
+        "feeder",
+        "lines",
+        "route"
+      ],
+      "1970s": [
+        "trunk",
+        "roads",
+        "motorway",
+        "communications",
+        "motorways",
+        "route",
+        "routes",
+        "link"
+      ],
+      "1980s": [
+        "networks",
+        "trunk",
+        "communications",
+        "telecommunications",
+        "mercury",
+        "rail",
+        "connecting",
+        "railways"
+      ],
+      "1990s": [
+        "rail",
+        "railways",
+        "railway",
+        "infrastructure",
+        "routes",
+        "networks",
+        "southeast",
+        "lines"
+      ],
+      "2000s": [
+        "rail",
+        "railway",
+        "post",
+        "offices",
+        "counters",
+        "railways",
+        "branches",
+        "office"
+      ],
+      "2010s": [
+        "rail",
+        "railway",
+        "railways",
+        "transport",
+        "infrastructure",
+        "trains",
+        "upgrades",
+        "speed"
+      ],
+      "2020s": [
+        "rail",
+        "transport",
+        "railway",
+        "infrastructure",
+        "railways",
+        "networks",
+        "reliability",
+        "reliable"
+      ]
+    },
+    "virus": {
+      "1950s": [
+        "infected",
+        "infection",
+        "mouth",
+        "fever",
+        "carcases",
+        "outbreaks",
+        "disease",
+        "pest"
+      ],
+      "1960s": [
+        "outbreak",
+        "mouth",
+        "infection",
+        "epidemic",
+        "outbreaks",
+        "pest",
+        "fowl",
+        "slaughtered"
+      ],
+      "1980s": [
+        "hiv",
+        "aids",
+        "infection",
+        "infected",
+        "needles",
+        "spread",
+        "epidemic",
+        "misusers"
+      ],
+      "1990s": [
+        "haemophiliacs",
+        "hepatitis",
+        "hiv",
+        "haemophilia",
+        "infection",
+        "infected",
+        "aids",
+        "blood"
+      ],
+      "2000s": [
+        "avian",
+        "flu",
+        "swine",
+        "influenza",
+        "bluetongue",
+        "outbreak",
+        "pandemic",
+        "outbreaks"
+      ],
+      "2010s": [
+        "hpv",
+        "vaccine",
+        "vaccinated",
+        "ebola",
+        "vaccination",
+        "outbreak",
+        "infection",
+        "immunisation"
+      ],
+      "2020s": [
+        "omicron",
+        "infection",
+        "covid",
+        "variant",
+        "variants",
+        "infectious",
+        "lockdowns",
+        "delta"
+      ]
+    },
+    "green": {
+      "1910s": [
+        "james",
+        "jones",
+        "charles",
+        "john",
+        "george",
+        "thomas",
+        "henry",
+        "william"
+      ],
+      "1920s": [
+        "bethnal",
+        "deptford",
+        "shoreditch",
+        "islington",
+        "camberwell",
+        "bermondsey",
+        "hackney",
+        "poplar"
+      ],
+      "1930s": [
+        "bethnal",
+        "shoreditch",
+        "bermondsey",
+        "hackney",
+        "stepney",
+        "hampstead",
+        "poplar",
+        "battersea"
+      ],
+      "1940s": [
+        "bethnal",
+        "gardens",
+        "blue",
+        "vegetables",
+        "wood",
+        "fruit",
+        "tottenham",
+        "battersea"
+      ],
+      "1950s": [
+        "bethnal",
+        "park",
+        "yellow",
+        "james's",
+        "wood",
+        "tottenham",
+        "hyde",
+        "belt"
+      ],
+      "1960s": [
+        "belt",
+        "belts",
+        "bethnal",
+        "wood",
+        "spaces",
+        "park",
+        "edge",
+        "yellow"
+      ],
+      "1970s": [
+        "devalue",
+        "devaluation",
+        "white",
+        "pound",
+        "devalued",
+        "currencies",
+        "deutschemark",
+        "yellow"
+      ],
+      "1980s": [
+        "belt",
+        "white",
+        "paper",
+        "hornsey",
+        "yellow",
+        "wood",
+        "edges",
+        "blue"
+      ],
+      "1990s": [
+        "belt",
+        "tracts",
+        "field",
+        "brown",
+        "sprawl",
+        "acres",
+        "stevenage",
+        "sites"
+      ],
+      "2000s": [
+        "belt",
+        "gardens",
+        "chingford",
+        "hornsey",
+        "greenfield",
+        "bethnal",
+        "urban",
+        "acres"
+      ],
+      "2010s": [
+        "belt",
+        "greenfield",
+        "acres",
+        "chingford",
+        "brownfield",
+        "gardens",
+        "hornsey",
+        "woodford"
+      ],
+      "2020s": [
+        "belt",
+        "chingford",
+        "clean",
+        "bethnal",
+        "blue",
+        "revolution",
+        "woodford",
+        "industrial"
+      ]
+    },
+    "environment": {
+      "1920s": [
+        "surroundings",
+        "life",
+        "amelioration",
+        "happier",
+        "healthy",
+        "climatic",
+        "habits",
+        "physique"
+      ],
+      "1930s": [
+        "surroundings",
+        "healthy",
+        "physique",
+        "educate",
+        "nourishment",
+        "degrading",
+        "child's",
+        "demoralising"
+      ],
+      "1940s": [
+        "surroundings",
+        "healthy",
+        "child's",
+        "healthier",
+        "habits",
+        "nourishment",
+        "outlook",
+        "physique"
+      ],
+      "1950s": [
+        "surroundings",
+        "childhood",
+        "spastic",
+        "educating",
+        "educate",
+        "subnormal",
+        "illiteracy",
+        "stigma"
+      ],
+      "1960s": [
+        "surroundings",
+        "environmental",
+        "beauty",
+        "amenities",
+        "countryside",
+        "amenity",
+        "enjoyment",
+        "communities"
+      ],
+      "1970s": [
+        "department",
+        "state",
+        "environmental",
+        "secretary",
+        "countryside",
+        "science",
+        "minister",
+        "pollution"
+      ],
+      "1980s": [
+        "countryside",
+        "environmental",
+        "landscape",
+        "pollution",
+        "department",
+        "beauty",
+        "amenity",
+        "wildlife"
+      ],
+      "1990s": [
+        "environmental",
+        "pollution",
+        "biodiversity",
+        "countryside",
+        "ecology",
+        "department",
+        "landscape",
+        "sustainable"
+      ],
+      "2000s": [
+        "agency",
+        "defra",
+        "biodiversity",
+        "marine",
+        "flood",
+        "rivers",
+        "landscape",
+        "natural"
+      ],
+      "2010s": [
+        "biodiversity",
+        "habitats",
+        "natural",
+        "environmental",
+        "soil",
+        "rivers",
+        "pollinators",
+        "farmland"
+      ],
+      "2020s": [
+        "biodiversity",
+        "environmental",
+        "pollution",
+        "nature",
+        "natural",
+        "ecosystems",
+        "habitats",
+        "wildlife"
+      ]
+    },
+    "climate": {
+      "1920s": [
+        "soil",
+        "grow",
+        "fertile",
+        "ours",
+        "climatic",
+        "variety",
+        "weather",
+        "earth"
+      ],
+      "1930s": [
+        "soil",
+        "climatic",
+        "weather",
+        "crops",
+        "grass",
+        "harvest",
+        "dry",
+        "wet"
+      ],
+      "1940s": [
+        "weather",
+        "climatic",
+        "frost",
+        "storms",
+        "tropical",
+        "rain",
+        "exposure",
+        "snow"
+      ],
+      "1950s": [
+        "climatic",
+        "prevailing",
+        "weather",
+        "conditions",
+        "wet",
+        "worsening",
+        "atmosphere",
+        "soil"
+      ],
+      "1960s": [
+        "atmosphere",
+        "conducive",
+        "flourish",
+        "attitudes",
+        "mood",
+        "harmony",
+        "stimulus",
+        "prevailing"
+      ],
+      "1970s": [
+        "atmosphere",
+        "flourish",
+        "economy",
+        "create",
+        "thrive",
+        "incentives",
+        "era",
+        "healthy"
+      ],
+      "1980s": [
+        "atmosphere",
+        "flourish",
+        "prosper",
+        "economy",
+        "stimulate",
+        "create",
+        "incentives",
+        "businesses"
+      ],
+      "1990s": [
+        "atmosphere",
+        "warming",
+        "rio",
+        "global",
+        "kyoto",
+        "ozone",
+        "planet",
+        "rain"
+      ],
+      "2000s": [
+        "change",
+        "warming",
+        "global",
+        "kyoto",
+        "deforestation",
+        "greenhouse",
+        "emissions",
+        "adaptation"
+      ],
+      "2010s": [
+        "warming",
+        "2050",
+        "emissions",
+        "global",
+        "carbon",
+        "gases",
+        "2030",
+        "greenhouse"
+      ],
+      "2020s": [
+        "warming",
+        "planet",
+        "cop26",
+        "adaptation",
+        "global",
+        "paris",
+        "nature",
+        "net"
+      ]
+    },
+    "terror": {
+      "1920s": [
+        "terrorism",
+        "outrage",
+        "awful",
+        "horror",
+        "reprisals",
+        "rampant",
+        "horrible",
+        "assassins"
+      ],
+      "1930s": [
+        "horror",
+        "fear",
+        "dread",
+        "despair",
+        "hearts",
+        "torture",
+        "hopelessness",
+        "apprehension"
+      ],
+      "1940s": [
+        "horror",
+        "agony",
+        "tyranny",
+        "sufferings",
+        "sorrow",
+        "torture",
+        "unhappiness",
+        "anger"
+      ],
+      "1950s": [
+        "terrorism",
+        "mob",
+        "anger",
+        "despair",
+        "bitterness",
+        "brutality",
+        "horror",
+        "amnesty"
+      ],
+      "1960s": [
+        "horror",
+        "stalemate",
+        "vietcong",
+        "vietnam",
+        "victory",
+        "escalate",
+        "brink",
+        "waged"
+      ],
+      "1970s": [
+        "killings",
+        "terrorism",
+        "violence",
+        "i.r.a",
+        "terrorists",
+        "ira",
+        "bloodshed",
+        "terrorist"
+      ],
+      "1980s": [
+        "terrorism",
+        "terrorist",
+        "killings",
+        "terrorists",
+        "atrocities",
+        "ira",
+        "outrages",
+        "evil"
+      ],
+      "1990s": [
+        "intimidation",
+        "brutal",
+        "killings",
+        "beatings",
+        "torture",
+        "brutality",
+        "murders",
+        "sectarian"
+      ],
+      "2000s": [
+        "terrorist",
+        "qaeda",
+        "terrorists",
+        "terrorism",
+        "taliban",
+        "insurgency",
+        "extremists",
+        "attacks"
+      ],
+      "2010s": [
+        "terrorist",
+        "terrorism",
+        "terrorists",
+        "qaeda",
+        "islamist",
+        "counter",
+        "threat",
+        "attacks"
+      ],
+      "2020s": [
+        "terrorist",
+        "terrorism",
+        "hezbollah",
+        "hamas",
+        "islamist",
+        "proscribed",
+        "isis",
+        "islamic"
+      ]
+    },
+    "immigration": {
+      "1920s": [
+        "immigrants",
+        "emigration",
+        "emigrants",
+        "migrants",
+        "migration",
+        "canada",
+        "emigrate",
+        "alien"
+      ],
+      "1930s": [
+        "immigrants",
+        "jewish",
+        "palestine",
+        "jews",
+        "absorptive",
+        "arab",
+        "arabs",
+        "emigration"
+      ],
+      "1940s": [
+        "immigrants",
+        "jewish",
+        "zionists",
+        "palestine",
+        "jews",
+        "arabs",
+        "zionist",
+        "palestinian"
+      ],
+      "1950s": [
+        "aliens",
+        "citizenship",
+        "alien",
+        "immigrants",
+        "immigrant",
+        "passports",
+        "passport",
+        "emigration"
+      ],
+      "1960s": [
+        "immigrants",
+        "aliens",
+        "immigrant",
+        "alien",
+        "passports",
+        "entry",
+        "citizens",
+        "voucher"
+      ],
+      "1970s": [
+        "immigrants",
+        "aliens",
+        "nationality",
+        "pakistani",
+        "passport",
+        "patrial",
+        "patriality",
+        "asian"
+      ],
+      "1980s": [
+        "entry",
+        "immigrants",
+        "visa",
+        "visas",
+        "fiancés",
+        "clearance",
+        "refusals",
+        "subcontinent"
+      ],
+      "1990s": [
+        "asylum",
+        "seekers",
+        "visa",
+        "visas",
+        "immigrants",
+        "clearance",
+        "entry",
+        "seeker"
+      ],
+      "2000s": [
+        "asylum",
+        "nationality",
+        "seekers",
+        "migration",
+        "visas",
+        "immigrants",
+        "borders",
+        "directorate"
+      ],
+      "2010s": [
+        "migration",
+        "asylum",
+        "visa",
+        "immigrants",
+        "visas",
+        "migrants",
+        "seekers",
+        "migrant"
+      ],
+      "2020s": [
+        "borders",
+        "asylum",
+        "nationality",
+        "migration",
+        "visa",
+        "migrants",
+        "inadmissible",
+        "indefinite"
+      ]
+    },
+    "europe": {
+      "1910s": [
+        "countries",
+        "russia",
+        "italy",
+        "country",
+        "austria",
+        "bolshevism",
+        "nations",
+        "world"
+      ],
+      "1920s": [
+        "world",
+        "countries",
+        "peace",
+        "germany",
+        "russia",
+        "france",
+        "nations",
+        "european"
+      ],
+      "1930s": [
+        "peace",
+        "germany",
+        "ourselves",
+        "aggression",
+        "france",
+        "nations",
+        "european",
+        "democracies"
+      ],
+      "1940s": [
+        "western",
+        "germany",
+        "russia",
+        "countries",
+        "continent",
+        "world",
+        "ourselves",
+        "european"
+      ],
+      "1950s": [
+        "western",
+        "germany",
+        "n.a.t.o",
+        "russia",
+        "allies",
+        "continent",
+        "countries",
+        "european"
+      ],
+      "1960s": [
+        "western",
+        "alliance",
+        "germany",
+        "allies",
+        "britain",
+        "n.a.t.o",
+        "european",
+        "ourselves"
+      ],
+      "1970s": [
+        "western",
+        "america",
+        "britain",
+        "states",
+        "allies",
+        "france",
+        "germany",
+        "alliance"
+      ],
+      "1980s": [
+        "western",
+        "germany",
+        "allies",
+        "nato",
+        "russia",
+        "eastern",
+        "britain",
+        "states"
+      ],
+      "1990s": [
+        "democracies",
+        "eastern",
+        "states",
+        "bloc",
+        "germany",
+        "union",
+        "western",
+        "continent"
+      ],
+      "2000s": [
+        "union",
+        "states",
+        "britain",
+        "european",
+        "countries",
+        "enlargement",
+        "poland",
+        "france"
+      ],
+      "2010s": [
+        "states",
+        "continent",
+        "france",
+        "poland",
+        "germany",
+        "greece",
+        "countries",
+        "britain"
+      ],
+      "2020s": [
+        "continent",
+        "allies",
+        "states",
+        "poland",
+        "nato",
+        "baltic",
+        "germany",
+        "flank"
+      ]
+    },
+    "empire": {
+      "1910s": [
+        "world",
+        "dominions",
+        "nation",
+        "preference",
+        "nations",
+        "country",
+        "self",
+        "colonies"
+      ],
+      "1920s": [
+        "dominions",
+        "imperial",
+        "dominion",
+        "overseas",
+        "preference",
+        "preferences",
+        "marketing",
+        "oversea"
+      ],
+      "1930s": [
+        "dominions",
+        "commonwealth",
+        "colonial",
+        "imperial",
+        "dominion",
+        "preference",
+        "oversea",
+        "overseas"
+      ],
+      "1940s": [
+        "commonwealth",
+        "dominions",
+        "imperial",
+        "peoples",
+        "colonial",
+        "dominion",
+        "territories",
+        "indies"
+      ],
+      "1950s": [
+        "commonwealth",
+        "dominions",
+        "dominion",
+        "imperial",
+        "preferences",
+        "peoples",
+        "colonial",
+        "indies"
+      ],
+      "1960s": [
+        "century",
+        "nineteenth",
+        "civilisation",
+        "history",
+        "colonial",
+        "evolution",
+        "imperial",
+        "dominions"
+      ],
+      "1970s": [
+        "colonial",
+        "centuries",
+        "decades",
+        "century",
+        "wars",
+        "1930s",
+        "caribbean",
+        "ties"
+      ],
+      "1980s": [
+        "colonial",
+        "communism",
+        "hitler",
+        "colony",
+        "territory",
+        "colonies",
+        "1939",
+        "1950s"
+      ],
+      "1990s": [
+        "communism",
+        "bloc",
+        "communist",
+        "disintegration",
+        "soviet",
+        "ussr",
+        "warsaw",
+        "pact"
+      ],
+      "2000s": [
+        "1920s",
+        "wars",
+        "centuries",
+        "century",
+        "history",
+        "continent",
+        "soviet",
+        "mediaeval"
+      ],
+      "2010s": [
+        "colonial",
+        "wars",
+        "centuries",
+        "1940s",
+        "century",
+        "1960s",
+        "19th",
+        "1948"
+      ],
+      "2020s": [
+        "colonial",
+        "caribbean",
+        "windrush",
+        "commonwealth",
+        "roots",
+        "history",
+        "1948",
+        "century"
+      ]
+    },
+    "commonwealth": {
+      "1920s": [
+        "australia",
+        "dominion",
+        "dominions",
+        "zealand",
+        "canada",
+        "australian",
+        "queensland",
+        "newfoundland"
+      ],
+      "1930s": [
+        "dominions",
+        "dominion",
+        "empire",
+        "australia",
+        "parliaments",
+        "canada",
+        "migrants",
+        "zealand"
+      ],
+      "1940s": [
+        "dominions",
+        "empire",
+        "dominion",
+        "imperial",
+        "governments",
+        "peoples",
+        "zealand",
+        "united"
+      ],
+      "1950s": [
+        "empire",
+        "dominions",
+        "dominion",
+        "imperial",
+        "preferences",
+        "montreal",
+        "ottawa",
+        "australia"
+      ],
+      "1960s": [
+        "asian",
+        "preferences",
+        "countries",
+        "indian",
+        "immigrants",
+        "governments",
+        "zealand",
+        "indies"
+      ],
+      "1970s": [
+        "asian",
+        "bangladesh",
+        "jamaica",
+        "colonies",
+        "citizens",
+        "caribbean",
+        "zealand",
+        "guyana"
+      ],
+      "1980s": [
+        "zimbabwe",
+        "african",
+        "africa",
+        "malawi",
+        "jamaica",
+        "foreign",
+        "zambia",
+        "botswana"
+      ],
+      "1990s": [
+        "africa",
+        "foreign",
+        "african",
+        "affairs",
+        "hosting",
+        "cpa",
+        "bilateral",
+        "nigeria"
+      ],
+      "2000s": [
+        "african",
+        "united",
+        "africa",
+        "foreign",
+        "secretariat",
+        "overseas",
+        "nations",
+        "citizens"
+      ],
+      "2010s": [
+        "caribbean",
+        "indian",
+        "hosted",
+        "india",
+        "pacific",
+        "host",
+        "medal",
+        "hosting"
+      ],
+      "2020s": [
+        "caribbean",
+        "cpa",
+        "african",
+        "graves",
+        "africa",
+        "empire",
+        "nations",
+        "asia"
+      ]
+    },
+    "house": {
+      "1910s": [
+        "commons",
+        "debate",
+        "adjournment",
+        "recess",
+        "this",
+        "speaker",
+        "everyone",
+        "doth"
+      ],
+      "1920s": [
+        "morrow",
+        "committee",
+        "monday",
+        "ayes",
+        "noes",
+        "commons",
+        "tomorrow",
+        "next"
+      ],
+      "1930s": [
+        "morrow",
+        "commons",
+        "tomorrow",
+        "again",
+        "committee",
+        "monday",
+        "adjournment",
+        "motion"
+      ],
+      "1940s": [
+        "adjourn",
+        "again",
+        "morrow",
+        "now",
+        "tomorrow",
+        "adjourned",
+        "sit",
+        "sittings"
+      ],
+      "1950s": [
+        "adjourn",
+        "tomorrow",
+        "now",
+        "again",
+        "adjourned",
+        "proposed",
+        "sit",
+        "resolved"
+      ],
+      "1960s": [
+        "adjourn",
+        "committee",
+        "tomorrow",
+        "adjourned",
+        "adjournment",
+        "now",
+        "standing",
+        "forthwith"
+      ],
+      "1970s": [
+        "adjourn",
+        "committee",
+        "standing",
+        "now",
+        "hour",
+        "though",
+        "o'clock",
+        "proposed"
+      ],
+      "1980s": [
+        "adjourn",
+        "this",
+        "lords",
+        "before",
+        "commons",
+        "divided",
+        "tuesday",
+        "noes"
+      ],
+      "1990s": [
+        "this",
+        "adjourn",
+        "february",
+        "before",
+        "o'clock",
+        "tuesday",
+        "26th",
+        "monday"
+      ],
+      "2000s": [
+        "this",
+        "before",
+        "adjourn",
+        "monday",
+        "conclusion",
+        "february",
+        "tuesday",
+        "laid"
+      ],
+      "2010s": [
+        "approved",
+        "adjourn",
+        "before",
+        "adjourned",
+        "laid",
+        "session",
+        "programmed",
+        "deferred"
+      ],
+      "2020s": [
+        "session",
+        "adjourn",
+        "before",
+        "approved",
+        "programmed",
+        "laid",
+        "now",
+        "divisions"
+      ]
+    },
+    "water": {
+      "1910s": [
+        "gas",
+        "electric",
+        "corporation",
+        "confirmation",
+        "docks",
+        "harbour",
+        "electrical",
+        "undertakers"
+      ],
+      "1920s": [
+        "gas",
+        "sewers",
+        "rivers",
+        "river",
+        "electricity",
+        "waterworks",
+        "drainage",
+        "conservancy"
+      ],
+      "1930s": [
+        "sewage",
+        "drainage",
+        "sewerage",
+        "electricity",
+        "supply",
+        "drains",
+        "rivers",
+        "sewers"
+      ],
+      "1940s": [
+        "sewerage",
+        "sewage",
+        "electricity",
+        "drainage",
+        "piped",
+        "pollution",
+        "reservoirs",
+        "sanitation"
+      ],
+      "1950s": [
+        "piped",
+        "sewerage",
+        "drainage",
+        "sewage",
+        "sewers",
+        "river",
+        "drains",
+        "sanitation"
+      ],
+      "1960s": [
+        "river",
+        "abstraction",
+        "reservoirs",
+        "piped",
+        "drainage",
+        "wash",
+        "mains",
+        "rivers"
+      ],
+      "1970s": [
+        "sewerage",
+        "sewers",
+        "drainage",
+        "sewage",
+        "river",
+        "mains",
+        "effluent",
+        "severn"
+      ],
+      "1980s": [
+        "sewerage",
+        "reservoirs",
+        "mains",
+        "rivers",
+        "sewage",
+        "abstraction",
+        "drainage",
+        "polluted"
+      ],
+      "1990s": [
+        "pipes",
+        "sewers",
+        "sewerage",
+        "anglian",
+        "mains",
+        "rivers",
+        "reservoirs",
+        "leakage"
+      ],
+      "2000s": [
+        "sewerage",
+        "drainage",
+        "sewage",
+        "rivers",
+        "drains",
+        "flooding",
+        "flood",
+        "flooded"
+      ],
+      "2010s": [
+        "sewage",
+        "drains",
+        "sewerage",
+        "rivers",
+        "sewers",
+        "groundwater",
+        "sewer",
+        "drainage"
+      ],
+      "2020s": [
+        "sewage",
+        "rivers",
+        "thames",
+        "overflows",
+        "overflow",
+        "waterways",
+        "sewerage",
+        "spills"
+      ]
+    }
+  }
+}

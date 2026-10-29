@@ -1,0 +1,11 @@
+{
+  "decade": "1950s",
+  "sitting_days": 1516,
+  "first": "debates1950-03-01a.xml",
+  "last": "debates1959-12-17a.xml",
+  "paragraphs": 673581,
+  "bytes": 511110724,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1950s.txt"
+}

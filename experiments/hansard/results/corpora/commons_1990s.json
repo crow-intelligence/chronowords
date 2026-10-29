@@ -1,0 +1,11 @@
+{
+  "decade": "1990s",
+  "sitting_days": 1572,
+  "first": "debates1990-01-08a.xml",
+  "last": "debates1999-12-21a.xml",
+  "paragraphs": 634555,
+  "bytes": 604042805,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1990s.txt"
+}

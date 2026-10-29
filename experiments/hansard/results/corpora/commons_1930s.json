@@ -1,0 +1,11 @@
+{
+  "decade": "1930s",
+  "sitting_days": 1520,
+  "first": "debates1930-01-21a.xml",
+  "last": "debates1939-12-14a.xml",
+  "paragraphs": 739219,
+  "bytes": 441077344,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1930s.txt"
+}

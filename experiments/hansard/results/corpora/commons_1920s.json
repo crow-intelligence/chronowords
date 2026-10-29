@@ -1,0 +1,11 @@
+{
+  "decade": "1920s",
+  "sitting_days": 1093,
+  "first": "debates1920-02-10a.xml",
+  "last": "debates1929-12-24a.xml",
+  "paragraphs": 574625,
+  "bytes": 321407014,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1920s.txt"
+}

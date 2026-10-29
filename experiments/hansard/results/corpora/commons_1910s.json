@@ -1,0 +1,11 @@
+{
+  "decade": "1910s",
+  "sitting_days": 159,
+  "first": "debates1919-02-04a.xml",
+  "last": "debates1919-12-28a.xml",
+  "paragraphs": 78891,
+  "bytes": 44983161,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1910s.txt"
+}

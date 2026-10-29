@@ -1,0 +1,11 @@
+{
+  "decade": "2020s",
+  "sitting_days": 1008,
+  "first": "debates2020-01-07b.xml",
+  "last": "debates2026-10-28a.xml",
+  "paragraphs": 954952,
+  "bytes": 388260116,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_2020s.txt"
+}

@@ -25,26 +25,29 @@ own per-slice corpora to reproduce it for real.
 1. Train one embedding space per slice
 --------------------------------------
 
-Each slice is just an iterable of text lines. Train one model per slice with the
-**same** ``n_components`` so the spaces are the same dimensionality.
+Each slice is an iterable of text lines (or a ``Path`` to a file). Train one
+model per slice with the **same** parameters, so the spaces have the same
+dimensionality and the same vocabulary rule. Choose ``min_count`` for your
+smallest slice: a word must occur that often *in a slice* to get a vector there.
 
 .. code-block:: python
 
    from chronowords.algebra import SVDAlgebra
 
    def train_slice(lines):
-       model = SVDAlgebra(n_components=8, cms_width=10_000, cms_depth=4)
-       model.train(iter(lines))
+       model = SVDAlgebra(n_components=8, min_count=5)
+       model.train(lines)
        return model
 
    model_early = train_slice(corpus_1900s)   # your slice-1 lines
    model_late = train_slice(corpus_1990s)    # your slice-2 lines
 
-For a real study, read each slice from disk::
+For a real study, pass each slice's file directly; it is read in the compiled
+core without loading it into Python::
 
-   def load_slice(path):
-       with open(path, encoding="utf-8") as fh:
-           return list(fh)
+   from pathlib import Path
+
+   model_early = train_slice(Path("slices/1900s.txt"))
 
 2. Align the two spaces
 -----------------------
@@ -136,10 +139,10 @@ target topic.
    from chronowords.topics import TopicModel
 
    topics_early = TopicModel(n_topics=10)
-   topics_early.fit(model_early._ppmi_sparse, model_early.vocabulary)
+   topics_early.fit(model_early.ppmi, model_early.vocabulary)
 
    topics_late = TopicModel(n_topics=10)
-   topics_late.fit(model_late._ppmi_sparse, model_late.vocabulary)
+   topics_late.fit(model_late.ppmi, model_late.vocabulary)
 
    for pair in topics_early.align_with(topics_late):
        early_words = [w for w, _ in pair.source_topic.words[:5]]
