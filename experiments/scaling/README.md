@@ -138,3 +138,50 @@ machine. The corpora, slices and tokenisation match the baseline.
 - `results/exact_preliminary.jsonl` holds the counting-only measurements taken during
   development (shared machine, 3 threads). They are kept as the record behind the Phase 3
   design decisions.
+
+## Bounded memory (`max_memory`, #23)
+
+`scripts/run_memory.sh` and `scripts/run_memory_pmc5.sh` train the same models
+with and without a counting budget (4 threads, `n_components=100`, otherwise
+defaults). Records: `results/memory.jsonl`. "memory error" is the documented
+outcome when the exact candidates do not fit: training stops with a
+`MemoryError` naming the sizes, instead of degrading silently.
+
+| corpus | ppmi_min_count | max_memory | outcome | time | peak memory | pair candidates / kept |
+|---|---|---|---|---|---|---|
+| enwiki-1GB | 1 | none | ok | 54 s | 2.25 GB | — |
+| enwiki-1GB | 1 | 2GB | ok | 104 s | 2.27 GB | 44,985,830 / 36,305,545 |
+| enwiki-1GB | 1 | 1GB | memory error | 51 s | 1.44 GB | — |
+| enwiki-1GB | 1 | 500MB | memory error | 45 s | 0.82 GB | — |
+| huwiki-1GB | 1 | none | ok | 59 s | 2.38 GB | — |
+| huwiki-1GB | 1 | 1GB | memory error | 42 s | 1.45 GB | — |
+| huwiki-1GB | 1 | 500MB | memory error | 35 s | 0.80 GB | — |
+| enwiki-3GB | 1 | none | ok | 143 s | 3.56 GB | — |
+| enwiki-3GB | 1 | 1GB | memory error | 144 s | 1.58 GB | — |
+| hansard-1990s | 1 | none | ok | 29 s | 1.17 GB | — |
+| hansard-1990s | 1 | 500MB | memory error | 33 s | 0.84 GB | — |
+| hansard-1990s | 1 | 250MB | memory error | 29 s | 0.69 GB | — |
+| enwiki-1GB | 5 | none | ok | 37 s | 2.03 GB | — |
+| enwiki-1GB | 5 | 1GB | ok | 85 s | 1.28 GB | 12,470,735 / 10,843,501 |
+| enwiki-1GB | 5 | 500MB | memory error | 57 s | 0.83 GB | — |
+| enwiki-3GB | 5 | none | ok | 112 s | 3.33 GB | — |
+| enwiki-3GB | 5 | 1GB | memory error | 158 s | 1.53 GB | — |
+| hansard-1990s | 5 | none | ok | 19 s | 1.15 GB | — |
+| hansard-1990s | 5 | 250MB | memory error | 27 s | 0.53 GB | — |
+
+What this shows:
+
+- **The guarantee holds.** Every successful bounded run produced the same PPMI
+  matrix as the unbounded run (identical nnz; equality is also a Hypothesis
+  property in the test suite).
+- **At the default `ppmi_min_count=1` a budget cannot save memory.** The filter
+  can only rule out pairs seen once, and the pairs seen twice or more (36 M at
+  1 GB of English) are what the model keeps. They are the source of the quality
+  gain measured in `experiments/evaluation`. A 2 GB budget peaked at 2.27 GB,
+  the same as unbounded, and took twice as long.
+- **With a higher threshold it helps moderately.** With `ppmi_min_count=5`, a
+  1 GB budget cut the 1 GB-English peak from 2.03 to 1.28 GB (−37%) at 2.3× the
+  time.
+- **Peaks happen during counting**, not in PPMI or SVD, so the budget acts on
+  the right phase. Without a budget the default peaks are 1.2 GB (one Hansard
+  decade), 2.3–2.4 GB (1 GB of Wikipedia) and 3.6 GB (3 GB).

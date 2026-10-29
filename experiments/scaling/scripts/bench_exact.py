@@ -90,6 +90,10 @@ def main() -> None:
     parser.add_argument("--max-mb", type=float)
     parser.add_argument("--threads", type=int, default=None, help="default: all cores")
     parser.add_argument("--n-components", type=int, default=100, help="default: 100")
+    parser.add_argument("--max-memory", default=None, help="counting budget, e.g. 1GB")
+    parser.add_argument(
+        "--ppmi-min-count", type=int, default=None, help="default: library"
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -109,12 +113,27 @@ def main() -> None:
 
     svd_module.svds = timed_svds
 
-    model = SVDAlgebra(n_components=args.n_components, n_threads=args.threads)
+    model = SVDAlgebra(
+        n_components=args.n_components,
+        n_threads=args.threads,
+        max_memory=args.max_memory,
+        **(
+            {"ppmi_min_count": args.ppmi_min_count}
+            if args.ppmi_min_count is not None
+            else {}
+        ),
+    )
     t0 = time.perf_counter()
-    model.train(path)
+    status, error = "ok", None
+    try:
+        model.train(path)
+    except MemoryError as exc:
+        status, error = "memory_error", str(exc)
     t1 = time.perf_counter()
 
-    def span(a: str, b: str) -> float:
+    def span(a: str, b: str) -> float | None:
+        if a not in marks.at or b not in marks.at:
+            return None
         return round(marks.at[b][0] - marks.at[a][0], 3)
 
     commit = subprocess.run(
@@ -124,8 +143,12 @@ def main() -> None:
         text=True,
     ).stdout.strip()
     rec = model.training_record or {}
+    count_s = span("count_start", "count_end")
     record = {
         "label": args.label,
+        "status": status,
+        "error": error,
+        "max_memory": args.max_memory,
         "corpus": str(path),
         "max_mb": args.max_mb,
         "bytes": path.stat().st_size,
@@ -136,9 +159,9 @@ def main() -> None:
             "ppmi": span("count_end", "svd_start"),
             "svd": span("svd_start", "svd_end"),
         },
-        "tokens_per_second": round(
-            rec["word_total"] / span("count_start", "count_end")
-        ),
+        "tokens_per_second": round(rec["word_total"] / count_s)
+        if rec and count_s
+        else None,
         "peak_rss_mb": round(peak_rss_mb(), 1),
         "peak_rss_mb_by_phase_end": {k: round(v[1], 1) for k, v in marks.at.items()},
         "training_record": rec,

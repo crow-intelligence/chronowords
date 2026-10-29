@@ -110,9 +110,13 @@ Setting a memory budget
    - **When it fails.** If the exact candidates still do not fit, training
      raises :class:`MemoryError` naming the sizes, rather than degrading
      silently. Raise ``max_memory``, ``min_count`` or ``ppmi_min_count``.
-   - **When it helps.** Only when there is a threshold to filter on:
-     ``SVDAlgebra`` keeps pairs seen more than ``ppmi_min_count`` times, so
-     ``ppmi_min_count=0`` leaves nothing to filter.
+   - **When it helps.** Only when there is something to filter out.
+     ``SVDAlgebra`` keeps pairs seen more than ``ppmi_min_count`` times. At
+     the default (1) the kept pairs are most of the memory, so a budget cannot
+     lower the peak much (measured on 1 GB of English: 2.25 GB unbounded, 2.27
+     GB with a 2 GB budget). With ``ppmi_min_count=5`` a 1 GB budget cut the
+     peak from 2.03 to 1.28 GB, at 2.3× the time. ``ppmi_min_count=0`` leaves
+     nothing to filter. The measurements are in ``experiments/scaling``.
 
    ``training_record["memory"]`` reports the sketch sizes and how many
    candidates were counted exactly versus kept.
