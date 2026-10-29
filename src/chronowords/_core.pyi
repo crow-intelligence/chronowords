@@ -12,7 +12,15 @@ def tokenize(
 ) -> list[str]: ...
 
 _WordCounts = tuple[list[str], NDArray[np.int64], int]
-_PairCounts = tuple[NDArray[np.int32], NDArray[np.int32], NDArray[np.int64], int]
+# Pair counts: COO rows, cols and counts, then row sums, column sums, total.
+_PairCounts = tuple[
+    NDArray[np.int32],
+    NDArray[np.int32],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    int,
+]
 
 def count_words(
     corpus: Iterable[str] | Iterable[Sequence[str]],
@@ -53,9 +61,8 @@ def ppmi_from_counts(
     rows: NDArray[np.int32],
     cols: NDArray[np.int32],
     pair_counts: NDArray[np.int64],
-    word_counts: NDArray[np.int64],
-    word_total: float,
-    skip_total: float,
+    row_sums: NDArray[np.int64],
+    col_sums: NDArray[np.int64],
     shift: float = 1.0,
     alpha: float = 0.75,
     min_count: int = 5,

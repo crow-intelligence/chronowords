@@ -49,6 +49,10 @@ class CooccurrenceCounts:
             filter, including out-of-vocabulary tokens.
         skip_total: Number of skip-grams in the corpus, including those with an
             out-of-vocabulary word and those pruned by ``min_pair_count``.
+        row_sums: For each vocabulary word, the number of in-vocabulary
+            skip-grams in which it is the focus word: the row sums of the full
+            co-occurrence matrix, counted *before* ``min_pair_count`` pruning.
+        col_sums: The same for the context word (column sums).
         n_types: Number of distinct token types seen in pass 1.
         params: The counting parameters and corpus description that produced
             these counts.
@@ -62,6 +66,8 @@ class CooccurrenceCounts:
     pair_counts: NDArray[np.int64]
     word_total: int
     skip_total: int
+    row_sums: NDArray[np.int64]
+    col_sums: NDArray[np.int64]
     n_types: int
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -159,9 +165,10 @@ def count_cooccurrences(
             Default ``False``.
         min_pair_count: Store only pairs observed at least this many times.
             Default 1 (every observed pair). Pruning does not change
-            ``skip_total`` or any PPMI value whose pair count exceeds the PPMI
-            threshold, so passing ``ppmi_min_count + 1`` cuts memory without
-            changing :func:`ppmi_matrix`.
+            ``skip_total``, ``row_sums``, ``col_sums`` or any PPMI value whose
+            pair count exceeds the PPMI threshold, so passing
+            ``ppmi_min_count + 1`` cuts memory without changing
+            :func:`ppmi_matrix`.
         n_threads: Threads for file input (both passes run in parallel);
             ``None`` (default) uses one per CPU core. Iterables are read on one
             thread. Has no effect on the counts.
@@ -266,17 +273,19 @@ def count_cooccurrences(
         vocabulary = words[:keep]
 
         if paths is not None:
-            rows, cols, pcounts, skip_total = _core.count_pairs_files(
-                paths,
-                vocabulary,
-                window_size,
-                min_word_length,
-                **tok,
-                min_pair_count=min_pair_count,
-                n_threads=threads,
+            rows, cols, pcounts, row_sums, col_sums, skip_total = (
+                _core.count_pairs_files(
+                    paths,
+                    vocabulary,
+                    window_size,
+                    min_word_length,
+                    **tok,
+                    min_pair_count=min_pair_count,
+                    n_threads=threads,
+                )
             )
         else:
-            rows, cols, pcounts, skip_total = _core.count_pairs(
+            rows, cols, pcounts, row_sums, col_sums, skip_total = _core.count_pairs(
                 items,
                 vocabulary,
                 window_size,
@@ -293,6 +302,8 @@ def count_cooccurrences(
         pair_counts=pcounts,
         word_total=int(word_total),
         skip_total=int(skip_total),
+        row_sums=row_sums,
+        col_sums=col_sums,
         n_types=len(words),
         params=params,
     )
@@ -307,59 +318,74 @@ def ppmi_matrix(
 ) -> csr_matrix:
     """Build the PPMI matrix from exact counts, in O(nnz).
 
-    With ``PMI(a, b) = log(P(a, b) / (P(a)**alpha * P(b)))``,
-    ``P(a, b) = n(a, b) / skip_total`` and ``P(w) = n(w) / word_total``, a cell
-    is stored when ``PMI(a, b) > 0`` *and* ``PMI(a, b) - log(shift) > 0``,
-    with that shifted value. For ``shift >= 1`` this is exactly
-    ``max(0, PMI - log(shift))``. For ``shift < 1``, cells with
-    ``PMI <= 0`` stay empty even though ``PMI - log(shift)`` would be
-    positive. This rule matches the sketch kernel.
+    Positive PMI with context-distribution smoothing, as defined by Levy,
+    Goldberg & Dagan (2015, TACL) and implemented in their ``hyperwords``
+    toolkit. With ``n(w, c)`` the pair count, ``row(w)`` and ``col(c)`` the row
+    and column sums of the full in-vocabulary co-occurrence matrix
+    (``counts.row_sums`` / ``counts.col_sums``, counted before any pruning), and
+    ``Z = sum over contexts c' of col(c')**alpha``::
 
-    Context-distribution smoothing (``alpha``) is applied to the focus word
-    ``a`` only. That asymmetry is intentional and matches the sketch kernel.
-    Each probability carries a ``1e-10`` epsilon, as in the sketch kernel.
+        P(w) = row(w) / D,   P_alpha(c) = col(c)**alpha / Z,   P(w, c) = n(w, c) / D
+        PPMI(w, c) = max(0, log(P(w, c) / (P(w) * P_alpha(c))) - log(shift))
+
+    where ``D``, the number of in-vocabulary skip-grams, cancels. Smoothing
+    applies to the *context* distribution only: raising it to ``alpha < 1``
+    lifts the probability of rare contexts, which damps PMI's bias toward rare
+    words. ``alpha=1`` is unsmoothed PMI.
 
     Args:
         counts: Output of :func:`count_cooccurrences`.
-        shift: PMI shift; ``log(shift)`` is subtracted. Must be > 0.
-            Default 1.0 (no shift).
-        alpha: Smoothing exponent on the focus word's probability. Default 0.75.
-        min_count: A word and a pair both need a count strictly greater than
-            this to receive an entry. Default 5.
+        shift: Shifted PPMI: ``log(shift)`` is subtracted before clipping at 0.
+            Must be > 0. Default 1.0 (no shift).
+        alpha: Context-distribution smoothing exponent. Must be > 0; 1 means
+            no smoothing. Default 0.75.
+        min_count: A pair needs a count strictly greater than this to receive
+            an entry; rarer pairs are left out (their counts still enter the
+            row and column sums). Default 5.
 
     Returns:
         A ``(V, V)`` float64 :class:`scipy.sparse.csr_matrix` of strictly
-        positive entries; unobserved and non-positive cells are absent.
+        positive entries; unobserved, too-rare and non-positive cells are
+        absent.
 
     Raises:
-        ValueError: If ``shift`` is not positive, or the corpus has no
-            skip-grams at all (every line has fewer than two kept tokens).
+        ValueError: If ``shift`` or ``alpha`` is not positive, or there is no
+            skip-gram between two vocabulary words at all.
 
     Examples:
-        Hand-computed: six "cat dog" lines give P(cat) = P(dog) = 1/2 and
-        P(cat, dog) = 1, so PPMI(cat, dog) = log(1 / (0.5**0.75 * 0.5))
-        = 1.75 * log(2).
+        Hand-computed: six lines each of "cat dog", "fish dog" and "cat bird"
+        give row sums cat=12, fish=6 and column sums dog=12, bird=6, so with
+        ``alpha=0.75``, ``Z = 12**0.75 + 6**0.75`` and
 
-        >>> m = ppmi_matrix(count_cooccurrences(["cat dog"] * 6, min_count=1))
-        >>> round(float(m[0, 1]), 6), round(1.75 * float(np.log(2)), 6)
-        (1.213008, 1.213008)
+        - PPMI(cat, bird) = log(6 Z / (12 * 6**0.75)) = log((2**0.75 + 1) / 2)
+        - PPMI(fish, dog) = log(6 Z / (6 * 12**0.75)) = log(1 + 2**-0.75)
+        - PMI(cat, dog) = log((1 + 2**-0.75) / 2) < 0, so no entry.
+
+        >>> lines = ["cat dog"] * 6 + ["fish dog"] * 6 + ["cat bird"] * 6
+        >>> counts = count_cooccurrences(lines, min_count=1)
+        >>> counts.vocabulary
+        ['cat', 'dog', 'bird', 'fish']
+        >>> m = ppmi_matrix(counts)
+        >>> round(float(m[0, 2]), 6), round(float(np.log((2**0.75 + 1) / 2)), 6)
+        (0.293338, 0.293338)
+        >>> round(float(m[3, 1]), 6), round(float(np.log(1 + 2**-0.75)), 6)
+        (0.466625, 0.466625)
         >>> m.nnz
-        1
+        2
 
     """
-    if counts.skip_total == 0:
+    if int(counts.col_sums.sum()) == 0:
         raise ValueError(
-            "The corpus has no skip-grams: every line has fewer than two tokens "
-            "after the min_word_length filter, so there is no co-occurrence to "
+            "There is no skip-gram between two vocabulary words: every line has "
+            "fewer than two vocabulary tokens, so there is no co-occurrence to "
             "weight."
         )
     data, rows, cols = _core.ppmi_from_counts(
         counts.pair_rows,
         counts.pair_cols,
         counts.pair_counts,
-        counts.word_counts,
-        float(counts.word_total),
-        float(counts.skip_total),
+        counts.row_sums,
+        counts.col_sums,
         shift=shift,
         alpha=alpha,
         min_count=min_count,

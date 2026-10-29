@@ -433,3 +433,74 @@ def test_sketch_parameters_are_gone():
         SVDAlgebra(counting="sketch")  # ty: ignore[unknown-argument]
     with pytest.raises(TypeError):
         SVDAlgebra(100, 5, 3, 1_000_000, 5)  # ty: ignore[too-many-positional-arguments]
+
+
+# --- vectors without information ---------------------------------------------
+
+SLICE_1775 = (
+    __import__("pathlib").Path(__file__).resolve().parents[2]
+    / "data"
+    / "corpus"
+    / "speeches_1775-1799_lemmatized.txt"
+)
+
+
+def test_empty_ppmi_rows_get_exactly_zero_vectors():
+    """A word heading no PPMI entry has no information, so its vector is 0.
+
+    In exact arithmetic U = M V S^-1 makes such rows zero; the solver leaves
+    round-off that normalisation would turn into a random direction.
+    """
+    model = SVDAlgebra(n_components=20, min_count=20)
+    model.train(SLICE_1775)
+    assert model.ppmi is not None and model.embeddings is not None
+    empty = np.diff(model.ppmi.indptr) == 0
+    assert empty.any()
+    assert (model.embeddings[empty] == 0.0).all()
+    zero = (model.embeddings == 0.0).all(axis=1)
+    assert model.training_record is not None
+    assert model.training_record["zero_vectors"] == int(zero.sum())
+    for i in np.flatnonzero(empty)[:5]:
+        assert not model.has_vector(model.vocabulary[i])
+
+
+def test_no_neighbour_lacks_a_vector():
+    """Regression: on this small slice, 69 of 117 queries used to return
+    round-off vectors (pure noise) among their top-5 neighbours.
+    """
+    model = SVDAlgebra(n_components=100, min_count=20)
+    model.train(SLICE_1775)
+    queried = 0
+    for word in model.vocabulary:
+        hits = model.most_similar(word, n=5)
+        if not model.has_vector(word):
+            assert hits == []
+            continue
+        queried += 1
+        assert all(model.has_vector(h.word) for h in hits)
+    assert queried > 0
+    no_vector = next(w for w in model.vocabulary if not model.has_vector(w))
+    assert model.distance(no_vector, model.vocabulary[0]) is None
+    assert model.analogy([no_vector, model.vocabulary[0]], model.vocabulary[1]) is None
+
+
+def test_eig_scales_singular_values():
+    """Embeddings are U * S**eig: changing eig rescales each dimension only."""
+    a = SVDAlgebra(n_components=3, min_count=1, eig=0.0)
+    b = SVDAlgebra(n_components=3, min_count=1, eig=1.0)
+    a.train(SIGNAL_CORPUS)
+    b.train(SIGNAL_CORPUS)
+    assert a.embeddings is not None and b.embeddings is not None
+    has = (a.embeddings != 0).any(axis=1)
+    ratio = b.embeddings[has] / a.embeddings[has]
+    # each column is scaled by one constant (its singular value)
+    np.testing.assert_allclose(ratio, np.broadcast_to(ratio[0], ratio.shape), rtol=1e-8)
+    assert b.training_record is not None
+    assert b.training_record["params"]["eig"] == 1.0
+
+
+@pytest.mark.parametrize("kwargs", [{"alpha": 0.0}, {"eig": -0.5}])
+def test_smoothing_parameters_are_validated(kwargs):
+    """Alpha must be positive and eig non-negative."""
+    with pytest.raises(ValueError):
+        SVDAlgebra(**kwargs)

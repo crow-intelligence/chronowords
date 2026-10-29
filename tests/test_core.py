@@ -63,7 +63,9 @@ def test_count_pairs_matches_nltk_skipgrams(lines, window, min_len, data):
         else []
     )
 
-    rows, cols, counts, total = _core.count_pairs(lines, vocab, window, min_len)
+    rows, cols, counts, row_sums, col_sums, total = _core.count_pairs(
+        lines, vocab, window, min_len
+    )
 
     expected: Counter = Counter()
     expected_total = 0
@@ -78,6 +80,13 @@ def test_count_pairs_matches_nltk_skipgrams(lines, window, min_len, data):
     }
     assert got == dict(expected)
     assert total == expected_total
+    # marginals: in-vocabulary pairs per focus word and per context word
+    rows_ref, cols_ref = [0] * len(vocab), [0] * len(vocab)
+    for (i, j), n in expected.items():
+        rows_ref[i] += n
+        cols_ref[j] += n
+    assert row_sums.tolist() == rows_ref
+    assert col_sums.tolist() == cols_ref
     keys = list(zip(rows.tolist(), cols.tolist(), strict=True))
     assert keys == sorted(keys)
 
@@ -89,7 +98,7 @@ def test_count_pairs_is_additive_over_line_shards(a, b, window):
     vocab = sorted({w for line in a + b for w in line.split()})
 
     def as_dict(lines):
-        r, c, n, total = _core.count_pairs(lines, vocab, window, 0)
+        r, c, n, _, _, total = _core.count_pairs(lines, vocab, window, 0)
         return Counter(
             dict(zip(zip(r.tolist(), c.tolist(), strict=True), n.tolist(), strict=True))
         ), total
@@ -99,19 +108,22 @@ def test_count_pairs_is_additive_over_line_shards(a, b, window):
     assert ta + tb == tab
 
 
-def test_ppmi_from_counts_golden_cell():
-    """Six ``cat dog`` lines: PPMI(cat, dog) = 1.75 * ln 2 (hand-computed)."""
+def test_ppmi_from_counts_golden_cells():
+    """Hand-computed cells; ids cat=0 dog=1 bird=2 fish=3.
+
+    Pairs (cat, dog)=6, (fish, dog)=6, (cat, bird)=6: rows cat=12, fish=6,
+    columns dog=12, bird=6, Z = 12**0.75 + 6**0.75.
+    """
     data, rows, cols = _core.ppmi_from_counts(
-        np.array([0], dtype=np.int32),
-        np.array([1], dtype=np.int32),
-        np.array([6]),
-        np.array([6, 6]),
-        12.0,
-        6.0,
+        np.array([0, 0, 3], dtype=np.int32),
+        np.array([1, 2, 1], dtype=np.int32),
+        np.array([6, 6, 6]),
+        np.array([12, 0, 0, 6]),
+        np.array([0, 12, 6, 0]),
     )
-    assert rows.tolist() == [0] and cols.tolist() == [1]
-    # the formula's 1e-10 epsilons move the value by ~3e-10
-    assert data[0] == pytest.approx(1.75 * np.log(2), abs=1e-8)
+    assert rows.tolist() == [0, 3] and cols.tolist() == [2, 1]
+    assert data[0] == pytest.approx(np.log((2**0.75 + 1) / 2), abs=1e-12)
+    assert data[1] == pytest.approx(np.log(1 + 2**-0.75), abs=1e-12)
 
 
 def test_count_pairs_rejects_duplicate_vocabulary():
@@ -123,21 +135,21 @@ def test_count_pairs_rejects_duplicate_vocabulary():
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
-        ({"word_total": 0.0}, "word_total"),
-        ({"skip_total": 0.0}, "skip_total"),
         ({"shift": 0.0}, "shift"),
-        ({"word_counts": np.array([6])}, "out of range"),
+        ({"alpha": 0.0}, "alpha"),
+        ({"row_sums": np.array([6]), "col_sums": np.array([6])}, "out of range"),
+        ({"pair_counts": np.array([99])}, "exceeds its row or column sum"),
+        ({"col_sums": np.array([6, 6, 0])}, "equal length"),
     ],
 )
 def test_ppmi_from_counts_fails_loudly(kwargs, match):
-    """Degenerate totals and out-of-range indices raise ``ValueError``."""
+    """Bad parameters, out-of-range indices and inconsistent sums raise."""
     args: dict[str, Any] = {
         "rows": np.array([0], dtype=np.int32),
         "cols": np.array([1], dtype=np.int32),
         "pair_counts": np.array([6]),
-        "word_counts": np.array([6, 6]),
-        "word_total": 12.0,
-        "skip_total": 6.0,
+        "row_sums": np.array([6, 0]),
+        "col_sums": np.array([0, 6]),
     }
     with pytest.raises(ValueError, match=match):
         _core.ppmi_from_counts(**{**args, **kwargs})

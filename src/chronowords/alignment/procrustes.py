@@ -300,18 +300,14 @@ class ProcrustesAligner:
         Returns:
             Cosine similarity in [-1, 1] between the aligned source vector and
             the target vector; higher means more similar usage across periods.
-            ``None`` if ``word`` is absent from either vocabulary.
+            ``None`` if ``word`` is absent from either vocabulary or has an
+            all-zero vector in either space (no PPMI entries: the model has no
+            information about it; see ``SVDAlgebra.has_vector``).
 
         Raises:
-            AttributeError: If the aligner has not been fit
+            TypeError: If the aligner has not been fit
                 (``orthogonal_matrix is None``) — surfaces from the matrix
                 multiply, which is *not* guarded here unlike :meth:`transform`.
-
-        Note:
-            The source/target vectors are divided by their L2 norm with no
-            zero-norm guard. A zero vector produces ``nan``/``inf`` entries and
-            a silent ``RuntimeWarning`` rather than ``None`` or an exception —
-            see the project pre-mortem.
 
         Examples:
             >>> import numpy as np
@@ -334,9 +330,12 @@ class ProcrustesAligner:
         source_vec = source_emb[source_idx]
         target_vec = target_emb[target_idx]
 
-        # Normalize vectors
-        source_vec = source_vec / np.linalg.norm(source_vec)
-        target_vec = target_vec / np.linalg.norm(target_vec)
+        source_norm = float(np.linalg.norm(source_vec))
+        target_norm = float(np.linalg.norm(target_vec))
+        if source_norm < 1e-10 or target_norm < 1e-10:
+            return None
+        source_vec = source_vec / source_norm
+        target_vec = target_vec / target_norm
 
         # Align source vector and compute similarity
         aligned_vec = source_vec @ self.orthogonal_matrix

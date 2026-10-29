@@ -162,7 +162,7 @@ pub fn count_pairs<K: PairKey>(
 ) -> Result<(PairTable<K>, u64), SourceError> {
     let index = vocab_index(vocabulary);
     let chunks = chunks(paths, chunk_bytes.max(1))?;
-    let mut table = PairTable::<K>::new(n_shards);
+    let mut table = PairTable::<K>::new(n_shards, vocabulary.len());
     let n_shards = table.shards.len() as u32;
     let mut total = 0u64;
     let wave = (2 * rayon::current_num_threads()).max(2);

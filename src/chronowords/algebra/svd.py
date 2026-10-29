@@ -26,6 +26,9 @@ from ..utils.cooccurrence import ppmi_matrix
 
 logger = logging.getLogger(__name__)
 
+# Norm below which a vector counts as zero ("no vector").
+_ZERO = 1e-10
+
 
 def _version() -> str | None:
     try:
@@ -117,6 +120,7 @@ class SVDAlgebra:
         shift: float = 1.0,
         alpha: float = 0.75,
         ppmi_min_count: int = 5,
+        eig: float = 0.5,
         tokenizer: Literal["whitespace", "unicode"] = "whitespace",
         lowercase: bool = False,
         n_threads: int | None = None,
@@ -136,12 +140,16 @@ class SVDAlgebra:
                 ties alphabetical; ``None`` for no cap. Default 50,000.
             min_count: Keep only words occurring at least this many times.
                 Default 100. Lower it for small corpora.
-            shift: PMI shift; ``log(shift)`` is subtracted from every PMI.
-                Default 1.0 (no shift).
-            alpha: Context-distribution smoothing exponent, applied to the
-                focus word's probability only. Default 0.75.
-            ppmi_min_count: A word and a pair both need a count strictly
-                greater than this to receive a PPMI entry. Default 5.
+            shift: Shifted PPMI: ``log(shift)`` is subtracted from every PMI
+                before clipping at 0. Default 1.0 (no shift).
+            alpha: Context-distribution smoothing exponent (Levy, Goldberg &
+                Dagan 2015), applied to the context distribution; 1 disables
+                it. Default 0.75. See
+                :func:`~chronowords.utils.cooccurrence.ppmi_matrix`.
+            ppmi_min_count: A pair needs a count strictly greater than this to
+                receive a PPMI entry. Default 5.
+            eig: Eigenvalue weighting: embeddings are ``U * S**eig``. 0 uses
+                the singular vectors alone, 1 the full SVD scaling. Default 0.5.
             tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or
                 ``"unicode"`` (ICU4X word segmentation for any script,
                 including Chinese, Japanese and Thai; punctuation dropped). See
@@ -185,6 +193,10 @@ class SVDAlgebra:
             raise ValueError(f"vocab_size must be >= 1 or None, got {vocab_size}")
         if shift <= 0:
             raise ValueError(f"shift must be > 0, got {shift}")
+        if alpha <= 0:
+            raise ValueError(f"alpha must be > 0, got {alpha}")
+        if eig < 0:
+            raise ValueError(f"eig must be >= 0, got {eig}")
 
         self.n_components = n_components
         self.window_size = window_size
@@ -194,6 +206,7 @@ class SVDAlgebra:
         self.shift = shift
         self.alpha = alpha
         self.ppmi_min_count = ppmi_min_count
+        self.eig = eig
         self.tokenizer: Literal["whitespace", "unicode"] = tokenizer
         self.lowercase = lowercase
         self.n_threads = n_threads
@@ -224,10 +237,52 @@ class SVDAlgebra:
             "shift": self.shift,
             "alpha": self.alpha,
             "ppmi_min_count": self.ppmi_min_count,
+            "eig": self.eig,
             "tokenizer": self.tokenizer,
             "lowercase": self.lowercase,
             "n_threads": self.n_threads,
         }
+
+    def has_vector(self, word: str) -> bool:
+        """Whether ``word`` is in the vocabulary *and* has a non-zero vector.
+
+        A vocabulary word gets an all-zero vector when no pair it heads
+        received a PPMI entry (an empty PPMI row): the model has no
+        information about it. Such words are never returned as neighbours,
+        and comparisons involving them return ``None``.
+
+        Examples:
+            >>> model = SVDAlgebra(n_components=2)
+            >>> model.vocabulary = ["cat", "dog"]
+            >>> model._build_vocab_index()
+            >>> model.embeddings = np.array([[1.0, 0.0], [0.0, 0.0]])
+            >>> model.has_vector("cat"), model.has_vector("dog"), model.has_vector("emu")
+            (True, False, False)
+
+        """
+        vec = self.get_vector(word)
+        return vec is not None and bool(np.linalg.norm(vec) >= _ZERO)
+
+    def _clean_embeddings(self) -> int:
+        """Zero the vectors that carry no information; return how many are zero.
+
+        A word whose PPMI row is empty has, in exact arithmetic, a zero vector
+        (``U = M V S^-1``); the iterative SVD solver leaves round-off of order
+        1e-8 instead, which normalisation would blow up into a random
+        direction. Those rows, and any row whose norm is below ``1e-6`` times
+        the median norm of the informative rows, are set to exactly zero.
+        """
+        if self.embeddings is None:
+            return 0
+        norms = np.linalg.norm(self.embeddings, axis=1)
+        empty = np.zeros(len(norms), dtype=bool)
+        if self._ppmi_sparse is not None and self._ppmi_sparse.shape[0] == len(norms):
+            empty = np.diff(self._ppmi_sparse.indptr) == 0
+        informative = norms[~empty & (norms > 0)]
+        floor = 1e-6 * float(np.median(informative)) if informative.size else 0.0
+        zero = empty | (norms < floor) | (norms < _ZERO)
+        self.embeddings[zero] = 0.0
+        return int(zero.sum())
 
     def _build_vocab_index(self) -> None:
         """Build dict index for O(1) vocabulary lookups."""
@@ -316,7 +371,12 @@ class SVDAlgebra:
         idx = np.argsort(S)[::-1]
         U = U[:, idx].astype(np.float64)
         S = S[idx].astype(np.float64)
-        self.embeddings = (U * np.sqrt(S)).astype(np.float64)
+        self.embeddings = (U * S**self.eig).astype(np.float64)
+        zero_vectors = self._clean_embeddings()
+        if zero_vectors:
+            logger.info(
+                "%d vocabulary words have no vector (empty PPMI row)", zero_vectors
+            )
 
         self.training_record = {
             "chronowords_version": _version(),
@@ -325,6 +385,7 @@ class SVDAlgebra:
             "vocab_size": len(self.vocabulary),
             "ppmi_nnz": int(M.nnz),
             "n_components_used": k,
+            "zero_vectors": zero_vectors,
             "svd": svd_path,
         }
         logger.info("Final embeddings shape: %s", self.embeddings.shape)
@@ -464,6 +525,8 @@ class SVDAlgebra:
             self._ppmi_sparse = csr_matrix(npz)
         elif (path / "ppmi.npy").exists():
             self._ppmi_sparse = csr_matrix(np.load(path / "ppmi.npy"))
+        # models saved by earlier versions may hold round-off vectors
+        self._clean_embeddings()
         record = path / "training_record.json"
         self.training_record = (
             json.loads(record.read_text(encoding="utf-8")) if record.exists() else None
@@ -511,16 +574,10 @@ class SVDAlgebra:
 
         Returns:
             Up to ``n`` :class:`WordSimilarity` results, sorted by descending
-            cosine similarity, excluding ``word`` itself. Empty if the model is
-            untrained, ``word`` is unknown, or ``word``'s vector has
-            effectively zero norm — these cases are indistinguishable from
-            "no similar words found".
-
-        Note:
-            Silenced numerical issues: vocabulary norms are floored at 1e-10 to
-            avoid division by zero, and any ``NaN`` similarity (from zero-norm
-            embeddings) is replaced with -1.0 and then filtered out, so
-            degenerate vectors are silently excluded rather than reported.
+            cosine similarity, excluding ``word`` itself and every word without
+            a vector (see :meth:`has_vector`). Empty if the model is untrained,
+            ``word`` is unknown, or ``word`` has no vector; use
+            :meth:`has_vector` to tell these apart from "no similar words".
 
         Examples:
             >>> model = SVDAlgebra(n_components=2)
@@ -541,22 +598,24 @@ class SVDAlgebra:
             return []
 
         query_norm = float(np.linalg.norm(vector))
-        if query_norm < 1e-10:
+        if query_norm < _ZERO:
             return []
 
         vocab_norms = np.linalg.norm(self.embeddings, axis=1)
-        vocab_norms = np.maximum(vocab_norms, 1e-10)
-
-        similarities = self.embeddings @ vector
-        similarities = similarities / (vocab_norms * query_norm)
+        has = vocab_norms >= _ZERO
+        similarities = np.full(len(vocab_norms), -np.inf)
+        similarities[has] = (self.embeddings[has] @ vector) / (
+            vocab_norms[has] * query_norm
+        )
         similarities = np.clip(similarities, -1.0, 1.0)
-        similarities = np.nan_to_num(similarities, nan=-1.0)
 
         results: list[WordSimilarity] = []
         for idx in np.argsort(similarities)[::-1]:
+            if not has[idx]:
+                break
             candidate = self.vocabulary[idx]
             similarity = float(similarities[idx])
-            if candidate != word and similarity > -1:
+            if candidate != word:
                 results.append(WordSimilarity(candidate, similarity))
                 if len(results) == n:
                     break
@@ -571,10 +630,10 @@ class SVDAlgebra:
             word2: Second word.
 
         Returns:
-            Cosine distance in the range [0, 1], or ``None`` if either word is
-            unknown (or the model is untrained) or either vector has
-            effectively zero norm. A ``None`` return does not distinguish these
-            cases.
+            Cosine distance ``1 - cos``, capped at 1.0 (so every negative
+            similarity maps to 1.0), or ``None`` if either word is unknown, the
+            model is untrained, or either word has no vector (see
+            :meth:`has_vector`).
 
         Examples:
             >>> model = SVDAlgebra(n_components=2)
@@ -595,7 +654,7 @@ class SVDAlgebra:
 
         norm1 = float(np.linalg.norm(vec1))
         norm2 = float(np.linalg.norm(vec2))
-        if norm1 < 1e-10 or norm2 < 1e-10:
+        if norm1 < _ZERO or norm2 < _ZERO:
             return None
 
         dist = float(cosine(vec1, vec2))
@@ -619,14 +678,10 @@ class SVDAlgebra:
             excluding the three input words and tokens shorter than
             ``min_word_length``), or ``None``. Several distinct conditions all
             collapse to ``None``: ``positive`` does not have exactly two
-            elements, the model is untrained, any input word is unknown, the
-            target vector is degenerate (near-zero norm), or no candidate
-            remains after filtering.
-
-        Note:
-            Silenced numerical issues: as in :meth:`most_similar`, vocabulary
-            norms are floored at 1e-10 and ``NaN`` similarities are mapped to
-            -1.0 and filtered out.
+            elements, the model is untrained, any input word is unknown or has
+            no vector, the target vector is degenerate (near-zero norm), or no
+            candidate remains after filtering. Words without a vector are never
+            candidates.
 
         Examples:
             >>> model = SVDAlgebra(n_components=2)
@@ -647,7 +702,7 @@ class SVDAlgebra:
         vectors: list[NDArray[np.float64]] = []
         for word in positive + [negative]:
             vec = self.get_vector(word)
-            if vec is None:
+            if vec is None or np.linalg.norm(vec) < _ZERO:
                 return None
             vectors.append(vec)
 
@@ -655,7 +710,7 @@ class SVDAlgebra:
 
         target = vec3 - vec1 + vec2
         target_norm = float(np.linalg.norm(target))
-        if target_norm < 1e-10:
+        if target_norm < _ZERO:
             return None
 
         target = target / target_norm
@@ -664,12 +719,10 @@ class SVDAlgebra:
             return None
 
         vocab_norms = np.linalg.norm(self.embeddings, axis=1)
-        vocab_norms = np.maximum(vocab_norms, 1e-10)
-
-        similarities = self.embeddings @ target
-        similarities = similarities / vocab_norms
+        has = vocab_norms >= _ZERO
+        similarities = np.full(len(vocab_norms), -np.inf)
+        similarities[has] = (self.embeddings[has] @ target) / vocab_norms[has]
         similarities = np.clip(similarities, -1.0, 1.0)
-        similarities = np.nan_to_num(similarities, nan=-1.0)
 
         results: list[str] = []
         similarity_scores: list[float] = []
@@ -678,11 +731,9 @@ class SVDAlgebra:
         for idx in np.argsort(similarities)[::-1]:
             word = self.vocabulary[idx]
             similarity = float(similarities[idx])
-            if (
-                word not in seen
-                and len(word) >= self.min_word_length
-                and similarity > -1
-            ):
+            if not has[idx]:
+                break
+            if word not in seen and len(word) >= self.min_word_length:
                 results.append(word)
                 similarity_scores.append(similarity)
                 if len(results) == n:

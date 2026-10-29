@@ -27,9 +27,12 @@ type PpmiCoo<'py> = (
     Bound<'py, PyArray1<i32>>,
 );
 type WordCounts<'py> = (Vec<String>, Bound<'py, PyArray1<i64>>, u64);
+/// `(rows, cols, counts, row_sums, col_sums, total)`.
 type PairCounts<'py> = (
     Bound<'py, PyArray1<i32>>,
     Bound<'py, PyArray1<i32>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<i64>>,
     u64,
 );
@@ -57,6 +60,8 @@ fn pair_counts_out<K: pairs::PairKey>(
         coo.rows.into_pyarray(py),
         coo.cols.into_pyarray(py),
         coo.counts.into_pyarray(py),
+        coo.row_sums.into_pyarray(py),
+        coo.col_sums.into_pyarray(py),
         total,
     ))
 }
@@ -273,9 +278,10 @@ fn count_pairs_files<'py>(
     }
 }
 
-/// PPMI COO entries from exact pair and word counts, in O(nnz).
+/// PPMI with context-distribution smoothing (Levy, Goldberg & Dagan 2015),
+/// from pair counts and the unpruned row/column sums, in O(nnz).
 #[pyfunction]
-#[pyo3(signature = (rows, cols, pair_counts, word_counts, word_total, skip_total,
+#[pyo3(signature = (rows, cols, pair_counts, row_sums, col_sums,
                     shift=1.0, alpha=0.75, min_count=5))]
 #[allow(clippy::too_many_arguments)]
 fn ppmi_from_counts<'py>(
@@ -283,39 +289,44 @@ fn ppmi_from_counts<'py>(
     rows: PyReadonlyArray1<'py, i32>,
     cols: PyReadonlyArray1<'py, i32>,
     pair_counts: PyReadonlyArray1<'py, i64>,
-    word_counts: PyReadonlyArray1<'py, i64>,
-    word_total: f64,
-    skip_total: f64,
+    row_sums: PyReadonlyArray1<'py, i64>,
+    col_sums: PyReadonlyArray1<'py, i64>,
     shift: f64,
     alpha: f64,
     min_count: i64,
 ) -> PyResult<PpmiCoo<'py>> {
-    let (r, c, n, w) = (
+    let (r, c, n, rs, cs) = (
         rows.as_slice()?,
         cols.as_slice()?,
         pair_counts.as_slice()?,
-        word_counts.as_slice()?,
+        row_sums.as_slice()?,
+        col_sums.as_slice()?,
     );
     require(
         r.len() == c.len() && c.len() == n.len(),
         "rows, cols and pair_counts must have equal length",
     )?;
-    require(word_total > 0.0, "word_total must be positive")?;
-    require(skip_total > 0.0, "skip_total must be positive")?;
+    require(
+        rs.len() == cs.len(),
+        "row_sums and col_sums must have equal length",
+    )?;
     require(shift > 0.0, "shift must be positive")?;
-    let v = w.len() as i64;
+    require(alpha > 0.0, "alpha must be positive")?;
+    let v = rs.len() as i64;
     require(
         r.iter().chain(c).all(|&i| (0..v).contains(&(i as i64))),
-        "pair index out of range of word_counts",
+        "pair index out of range of row_sums/col_sums",
+    )?;
+    require(
+        (0..r.len()).all(|k| n[k] <= rs[r[k] as usize] && n[k] <= cs[c[k] as usize]),
+        "a pair count exceeds its row or column sum",
     )?;
     let p = exact::PpmiParams {
-        word_total,
-        skip_total,
         shift,
         alpha,
         min_count,
     };
-    let (d, rr, cc) = py.detach(|| exact::ppmi_from_counts(r, c, n, w, &p));
+    let (d, rr, cc) = py.detach(|| exact::ppmi_from_counts(r, c, n, rs, cs, &p));
     Ok((d.into_pyarray(py), rr.into_pyarray(py), cc.into_pyarray(py)))
 }
 

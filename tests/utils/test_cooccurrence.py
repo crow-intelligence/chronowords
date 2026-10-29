@@ -16,6 +16,7 @@ from chronowords import _core
 from chronowords.utils.cooccurrence import CooccurrenceCounts
 from chronowords.utils.cooccurrence import count_cooccurrences
 from chronowords.utils.cooccurrence import ppmi_matrix
+from tests import reference
 from tests.reference import skipgrams
 
 
@@ -155,32 +156,35 @@ def test_file_reading_matches_python_text_mode(text, tmp_path_factory):
 )
 @COOC
 def test_ppmi_matches_reference_formula(lines, shift, alpha, ppmi_min):
-    """``ppmi_matrix`` equals the documented formula, cell by cell."""
+    """``ppmi_matrix`` equals a NumPy implementation of the published formula
+    (tests/reference.py), cell by cell, including the marginals.
+    """
     assume(any(len(w) >= 3 for line in lines for w in line.split()))
     c = count_cooccurrences(lines, min_count=1)
-    if c.skip_total == 0:
-        with pytest.raises(ValueError, match="no skip-grams"):
+    if int(c.col_sums.sum()) == 0:
+        with pytest.raises(ValueError, match="no skip-gram"):
             ppmi_matrix(c)
         return
     m = ppmi_matrix(c, shift=shift, alpha=alpha, min_count=ppmi_min).toarray()
+    pairs = dict(
+        zip(
+            zip(c.pair_rows.tolist(), c.pair_cols.tolist(), strict=True),
+            c.pair_counts.tolist(),
+            strict=True,
+        )
+    )
+    # the stored marginals are the full matrix's (nothing pruned here)
+    dense = np.zeros_like(m)
+    for (i, j), n in pairs.items():
+        dense[i, j] = n
+    assert c.row_sums.tolist() == dense.sum(axis=1).astype(int).tolist()
+    assert c.col_sums.tolist() == dense.sum(axis=0).astype(int).tolist()
 
-    eps = 1e-10
-    wc = dict(zip(c.vocabulary, c.word_counts.tolist(), strict=True))
-    expected = np.zeros_like(m)
-    for r, k, n in zip(c.pair_rows, c.pair_cols, c.pair_counts, strict=True):
-        a, b = c.vocabulary[r], c.vocabulary[k]
-        if n <= ppmi_min or wc[a] <= ppmi_min or wc[b] <= ppmi_min:
-            continue
-        pa = (wc[a] / c.word_total + eps) ** alpha
-        pb = wc[b] / c.word_total + eps
-        pab = (n + eps) / c.skip_total
-        pmi = np.log(pab / (pa * pb))
-        # documented rule: PMI must be positive before the shift is applied
-        if pmi > 0:
-            expected[r, k] = max(0.0, pmi - np.log(shift))
-
+    expected = reference.ppmi(
+        pairs, len(c.vocabulary), alpha=alpha, shift=shift, min_count=ppmi_min
+    )
     assert (m >= 0).all()
-    np.testing.assert_allclose(m, expected, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(m, expected, rtol=1e-10, atol=1e-12)
 
 
 def test_matrix_is_the_pair_counts():
@@ -378,8 +382,8 @@ def test_parallel_file_counting_ignores_chunking_and_threads(
         [str(path)], words, window, 0, n_threads=threads, chunk_bytes=chunk
     )
     exp = _core.count_pairs(lines, words, window, 0)
-    assert [a.tolist() for a in got[:3]] + [got[3]] == [a.tolist() for a in exp[:3]] + [
-        exp[3]
+    assert [a.tolist() for a in got[:5]] + [got[5]] == [a.tolist() for a in exp[:5]] + [
+        exp[5]
     ]
 
 
@@ -398,8 +402,10 @@ def test_min_pair_count_prunes_without_touching_totals_or_ppmi(lines, min_pair):
     assert pruned.pair_cols.tolist() == full.pair_cols[keep].tolist()
     assert pruned.pair_counts.tolist() == full.pair_counts[keep].tolist()
     assert (pruned.word_total, pruned.skip_total) == (full.word_total, full.skip_total)
+    assert pruned.row_sums.tolist() == full.row_sums.tolist()
+    assert pruned.col_sums.tolist() == full.col_sums.tolist()
     assert pruned.params["min_pair_count"] == min_pair
-    if full.skip_total:
+    if int(full.col_sums.sum()):
         np.testing.assert_array_equal(
             ppmi_matrix(pruned, min_count=min_pair - 1).toarray(),
             ppmi_matrix(full, min_count=min_pair - 1).toarray(),
@@ -415,7 +421,7 @@ def test_vocabularies_beyond_65536_words_use_wide_keys(tmp_path):
     f = tmp_path / "wide.txt"
     f.write_text("\n".join(lines) + "\n", encoding="utf-8")
     expected = Counter(p for line in lines for p in skipgrams(line.split(), 1))
-    for rows, cols, counts, _ in (
+    for rows, cols, counts, *_ in (
         _core.count_pairs(lines, vocab, 1, 0),
         _core.count_pairs_files([str(f)], vocab, 1, 0, chunk_bytes=5),
     ):

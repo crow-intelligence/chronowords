@@ -91,7 +91,7 @@ impl<K: PairKey> PairCounter<K> {
     pub fn new(vocabulary: &[String], window: usize, tokenizer: Tokenizer) -> Self {
         Self {
             index: vocab_index(vocabulary),
-            table: PairTable::new(1),
+            table: PairTable::new(1, vocabulary.len()),
             total: 0,
             window,
             tokenizer,
@@ -115,51 +115,52 @@ impl<K: PairKey> PairCounter<K> {
 }
 
 pub struct PpmiParams {
-    pub word_total: f64,
-    pub skip_total: f64,
+    /// PMI shift: `log(shift)` is subtracted (shifted PPMI). Must be > 0.
     pub shift: f64,
+    /// Context-distribution smoothing exponent. Must be > 0; 1 disables it.
     pub alpha: f64,
-    /// Words and pairs need a count strictly greater than this.
+    /// A pair needs a count strictly greater than this.
     pub min_count: i64,
 }
 
-/// PPMI over exact counts, in O(nnz).
+/// PPMI with context-distribution smoothing, as in Levy, Goldberg & Dagan
+/// (2015) and their `hyperwords` toolkit, in O(nnz).
+///
+/// With `n(w, c)` the pair count, `row(w)` and `col(c)` the row and column
+/// sums of the *full* (unpruned) in-vocabulary co-occurrence matrix, and
+/// `Z = sum over c' of col(c')^alpha`:
+///
+/// `PPMI(w, c) = max(0, log(n(w, c) * Z / (row(w) * col(c)^alpha)) - log(shift))`
+///
+/// i.e. `P(w) = row(w) / D`, `P_alpha(c) = col(c)^alpha / Z` and
+/// `P(w, c) = n(w, c) / D`, where the total `D` cancels.
 pub fn ppmi_from_counts(
     rows: &[i32],
     cols: &[i32],
     pair_counts: &[i64],
-    word_counts: &[i64],
+    row_sums: &[i64],
+    col_sums: &[i64],
     p: &PpmiParams,
 ) -> (Vec<f64>, Vec<i32>, Vec<i32>) {
-    const EPS: f64 = 1e-10;
-    let log_shift = p.shift.ln();
-    let prob = |c: i64| {
-        if c > p.min_count {
-            c as f64 / p.word_total
-        } else {
-            0.0
-        }
-    };
+    let z: f64 = col_sums
+        .iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| (c as f64).powf(p.alpha))
+        .sum();
+    let (ln_z, ln_shift) = (z.ln(), p.shift.ln());
     let (mut data, mut out_r, mut out_c) = (Vec::new(), Vec::new(), Vec::new());
     for k in 0..rows.len() {
-        let (i, j, pair) = (rows[k], cols[k], pair_counts[k]);
-        if pair <= p.min_count {
+        let (i, j, n) = (rows[k], cols[k], pair_counts[k]);
+        if n <= p.min_count {
             continue;
         }
-        let (fi, fj) = (prob(word_counts[i as usize]), prob(word_counts[j as usize]));
-        if fi == 0.0 || fj == 0.0 {
-            continue;
-        }
-        let pa = (fi + EPS).powf(p.alpha);
-        let pb = fj + EPS;
-        let pab = (pair as f64 + EPS) / p.skip_total;
-        if pab > pa * pb {
-            let pmi = (pab / (pa * pb)).ln() - log_shift;
-            if pmi > 0.0 {
-                data.push(pmi);
-                out_r.push(i);
-                out_c.push(j);
-            }
+        // n > 0 implies row(i) > 0 and col(j) > 0
+        let (r, c) = (row_sums[i as usize] as f64, col_sums[j as usize] as f64);
+        let pmi = (n as f64).ln() + ln_z - r.ln() - p.alpha * c.ln() - ln_shift;
+        if pmi > 0.0 {
+            data.push(pmi);
+            out_r.push(i);
+            out_c.push(j);
         }
     }
     (data, out_r, out_c)
@@ -190,17 +191,21 @@ mod tests {
     }
 
     #[test]
-    fn golden_cell() {
-        // six "cat dog" lines: PPMI(cat, dog) = 1.75 ln 2
+    fn golden_cells() {
+        // pairs (cat,dog)=6, (fish,dog)=6, (cat,bird)=6; ids cat=0 dog=1 bird=2 fish=3
+        // rows: cat 12, fish 6; cols: dog 12, bird 6
+        let (r, c, n) = (vec![0, 0, 3], vec![1, 2, 1], vec![6, 6, 6]);
+        let (rs, cs) = (vec![12, 0, 0, 6], vec![0, 12, 6, 0]);
         let p = PpmiParams {
-            word_total: 12.0,
-            skip_total: 6.0,
             shift: 1.0,
             alpha: 0.75,
             min_count: 5,
         };
-        let (d, r, c) = ppmi_from_counts(&[0], &[1], &[6], &[6, 6], &p);
-        assert_eq!((r, c), (vec![0], vec![1]));
-        assert!((d[0] - 1.75 * 2f64.ln()).abs() < 1e-8);
+        let (d, rr, cc) = ppmi_from_counts(&r, &c, &n, &rs, &cs, &p);
+        // (cat, dog): log(6 Z / (12 * 12^0.75)) < 0, dropped
+        assert_eq!((rr, cc), (vec![0, 3], vec![2, 1]));
+        // (cat, bird) = log((2^0.75 + 1) / 2); (fish, dog) = log(1 + 2^-0.75)
+        assert!((d[0] - ((2f64.powf(0.75) + 1.0) / 2.0).ln()).abs() < 1e-12);
+        assert!((d[1] - (1.0 + 2f64.powf(-0.75)).ln()).abs() < 1e-12);
     }
 }

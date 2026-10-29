@@ -47,18 +47,27 @@ pub const COMPACT_MAX_VOCAB: usize = 1 << 16;
 pub struct Shard<K> {
     pub map: FxHashMap<K, u32>,
     pub overflow: bool,
+    /// Pair-count marginals over *all* in-vocabulary pairs this shard saw,
+    /// before any pruning: `row[a]` = pairs with focus `a`, `col[b]` = pairs
+    /// with context `b`.
+    pub row: Vec<u64>,
+    pub col: Vec<u64>,
 }
 
 impl<K: PairKey> Shard<K> {
-    fn new() -> Self {
+    fn new(vocab_size: usize) -> Self {
         Self {
             map: FxHashMap::default(),
             overflow: false,
+            row: vec![0; vocab_size],
+            col: vec![0; vocab_size],
         }
     }
 
     #[inline]
     fn add(&mut self, a: u32, b: u32) {
+        self.row[a as usize] += 1;
+        self.col[b as usize] += 1;
         let c = self.map.entry(K::pack(a, b)).or_insert(0);
         match c.checked_add(1) {
             Some(v) => *c = v,
@@ -90,17 +99,23 @@ pub struct PairTable<K> {
     pub shards: Vec<Shard<K>>,
 }
 
-/// COO pair counts, sorted by row then column.
+/// COO pair counts, sorted by row then column, plus the unpruned marginals.
 pub struct Coo {
     pub rows: Vec<i32>,
     pub cols: Vec<i32>,
     pub counts: Vec<i64>,
+    /// Total in-vocabulary pairs per focus word (row sums of the full matrix).
+    pub row_sums: Vec<i64>,
+    /// Total in-vocabulary pairs per context word (column sums).
+    pub col_sums: Vec<i64>,
 }
 
 impl<K: PairKey> PairTable<K> {
-    pub fn new(n_shards: usize) -> Self {
+    pub fn new(n_shards: usize, vocab_size: usize) -> Self {
         Self {
-            shards: (0..n_shards.max(1)).map(|_| Shard::new()).collect(),
+            shards: (0..n_shards.max(1))
+                .map(|_| Shard::new(vocab_size))
+                .collect(),
         }
     }
 
@@ -113,6 +128,16 @@ impl<K: PairKey> PairTable<K> {
     /// Shards are freed one by one as they are drained, and the buffer is
     /// sized to the kept pairs only, so pruning lowers the peak as well.
     pub fn into_coo(self, min_count: u32) -> Coo {
+        let v_size = self.shards.first().map_or(0, |s| s.row.len());
+        let (mut row_sums, mut col_sums) = (vec![0i64; v_size], vec![0i64; v_size]);
+        for shard in &self.shards {
+            for (t, &x) in row_sums.iter_mut().zip(&shard.row) {
+                *t += x as i64;
+            }
+            for (t, &x) in col_sums.iter_mut().zip(&shard.col) {
+                *t += x as i64;
+            }
+        }
         let kept: usize = self
             .shards
             .par_iter()
@@ -127,6 +152,8 @@ impl<K: PairKey> PairTable<K> {
             rows: Vec::with_capacity(v.len()),
             cols: Vec::with_capacity(v.len()),
             counts: Vec::with_capacity(v.len()),
+            row_sums,
+            col_sums,
         };
         for (k, c) in v {
             let (a, b) = k.unpack();
@@ -155,21 +182,27 @@ mod tests {
     #[test]
     fn shards_partition_pairs_by_focus() {
         let ids = [0, 1, OOV, 2, 3];
-        let mut whole = PairTable::<u32>::new(1);
+        let mut whole = PairTable::<u32>::new(1, 4);
         whole.shards[0].add_line(&ids, 1, 0, 1);
-        let mut split = PairTable::<u32>::new(2);
+        let mut split = PairTable::<u32>::new(2, 4);
         for (s, shard) in split.shards.iter_mut().enumerate() {
             shard.add_line(&ids, 1, s as u32, 2);
         }
         let (w, p) = (whole.into_coo(1), split.into_coo(1));
+        assert_eq!((&w.row_sums, &w.col_sums), (&p.row_sums, &p.col_sums));
         assert_eq!((w.rows, w.cols, w.counts), (p.rows, p.cols, p.counts));
     }
 
     #[test]
     fn min_count_prunes() {
-        let mut t = PairTable::<u64>::new(1);
+        let mut t = PairTable::<u64>::new(1, 3);
         t.shards[0].add_line(&[0, 1, 0, 1, 0, 2], 0, 0, 1);
         let coo = t.into_coo(2);
+        // marginals count the pruned (0, 2) pair too
+        assert_eq!(
+            (coo.row_sums.clone(), coo.col_sums.clone()),
+            (vec![3, 2, 0], vec![2, 2, 1])
+        );
         assert_eq!(
             (coo.rows, coo.cols, coo.counts),
             (vec![0, 1], vec![1, 0], vec![2, 2])
