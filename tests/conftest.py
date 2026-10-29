@@ -4,8 +4,6 @@ import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from chronowords.utils.probabilistic_counter import CountMinSketch
-
 
 @pytest.fixture
 def small_corpus():
@@ -26,21 +24,6 @@ def small_corpus():
         "queen rules kingdom crown royal",
         "man woman child family home",
     ]
-
-
-@pytest.fixture
-def small_sketch():
-    """Create a small Count-Min Sketch for testing."""
-    return CountMinSketch(width=100, depth=3, seed=42)
-
-
-@pytest.fixture
-def filled_sketch(small_sketch, small_corpus):
-    """Create a Count-Min Sketch filled with test data."""
-    for line in small_corpus:
-        for word in line.split():
-            small_sketch.update(word)
-    return small_sketch
 
 
 @pytest.fixture

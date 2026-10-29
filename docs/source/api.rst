@@ -22,13 +22,7 @@ Topic Modeling
 Utilities
 ---------
 
-Count-Min Sketch
-^^^^^^^^^^^^^^^^
-.. automodule:: chronowords.utils.probabilistic_counter
-   :members:
-   :show-inheritance:
-
-PPMI computation (Cython)
-^^^^^^^^^^^^^^^^^^^^^^^^^
-.. autoclass:: chronowords.utils.count_skipgrams.PPMIComputer
+Exact counting and PPMI
+^^^^^^^^^^^^^^^^^^^^^^^
+.. automodule:: chronowords.utils.cooccurrence
    :members:
