@@ -26,9 +26,10 @@ Build embeddings from a corpus
 ------------------------------
 
 :class:`~chronowords.algebra.svd.SVDAlgebra` trains PPMI-weighted word
-embeddings from any iterable of text lines. Internally it counts words and
-skip-grams with a Count-Min Sketch and factorises the PPMI matrix with truncated
-SVD.
+embeddings. It counts every word and skip-gram exactly, in two passes, in its
+compiled core. It keeps the ``vocab_size`` most frequent words that occur at
+least ``min_count`` times (defaults: 50,000 and 100), builds a sparse PPMI
+matrix and factorises it with truncated SVD.
 
 .. code-block:: python
 
@@ -49,15 +50,46 @@ SVD.
    ]
    corpus = (animal * 15) + (royal * 15)
 
-   model = SVDAlgebra(n_components=10, cms_width=10_000, cms_depth=4)
-   model.train(iter(corpus))
+   # min_count defaults to 100, which suits real corpora; this toy corpus
+   # repeats each sentence 15 times, so keep words seen at least 10 times.
+   model = SVDAlgebra(n_components=10, min_count=10)
+   model.train(corpus)
 
    print(f"vocabulary size: {len(model.vocabulary)}")
 
-To train on a file, pass the file handle directly — each line is one document::
+To train on files, pass a :class:`pathlib.Path` (or a list of them). Each line
+is one context, and skip-grams never cross a line break. The files are read in
+the compiled core, which is the fastest route for large corpora::
 
-   with open("corpus.txt", encoding="utf-8") as fh:
-       model.train(fh)
+   from pathlib import Path
+
+   model.train(Path("corpus.txt"))
+   model.train([Path("part1.txt"), Path("part2.txt")])
+
+Already tokenised (lemmatised, say)? Pass token lists instead of strings::
+
+   model.train([["the", "king", "rule"], ["the", "queen", "rule"]])
+
+A generator or an open file handle also works. It is read once and copied to a
+temporary file for the second pass, so it needs free disk space about the size
+of the corpus.
+
+Files are counted on all CPU cores (``n_threads=None``); pass ``n_threads=2``
+to leave cores free. The thread count never changes the counts.
+
+Raw text with punctuation? Instead of preprocessing it in Python, let the core
+segment it into words and lowercase it::
+
+   model = SVDAlgebra(tokenizer="unicode", lowercase=True)
+
+The ``"unicode"`` tokenizer uses ICU4X, the Unicode Consortium's Rust library.
+It follows the Unicode word-boundary rules (UAX #29) and adds dictionary
+segmentation for Chinese and Japanese and models for Thai, Lao, Khmer and
+Burmese, which are written without spaces. It drops punctuation and keeps
+``can't`` and ``3.14`` whole. The default,
+``tokenizer="whitespace"``, splits exactly like ``str.split()``, which is what
+lemmatised or otherwise pre-processed text needs. Both choices change the
+vocabulary, so they are recorded in ``training_record["params"]``.
 
 Query the embeddings
 --------------------
@@ -77,6 +109,21 @@ Query the embeddings
 Unknown words never raise: :meth:`~chronowords.algebra.svd.SVDAlgebra.most_similar`
 returns an empty list and :meth:`~chronowords.algebra.svd.SVDAlgebra.distance`
 returns ``None``.
+
+Audit what was counted
+----------------------
+
+Every trained model keeps the counts behind its PPMI matrix, and a record of
+the parameters and corpus that produced them:
+
+.. code-block:: python
+
+   print(model.training_record["word_total"], model.training_record["vocab_size"])
+   print(model.training_record["params"]["min_count"])
+
+   counts = model.counts             # exact word and pair counts
+   print(counts.word_counts[:3])     # counts of the 3 most frequent words
+   print(counts.matrix().nnz)        # distinct observed vocabulary pairs
 
 Save and reload a model
 -----------------------
@@ -99,14 +146,14 @@ Extract topics
 
 :class:`~chronowords.topics.nmf.TopicModel` runs non-negative matrix
 factorisation over the PPMI matrix that ``train`` already computed
-(``model._ppmi_sparse``):
+(``model.ppmi``):
 
 .. code-block:: python
 
    from chronowords.topics import TopicModel
 
    topics = TopicModel(n_topics=2)
-   topics.fit(model._ppmi_sparse, model.vocabulary)
+   topics.fit(model.ppmi, model.vocabulary)
    topics.print_topics(top_n=5)
 
 Next steps

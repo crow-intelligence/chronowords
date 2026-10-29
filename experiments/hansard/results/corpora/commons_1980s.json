@@ -1,0 +1,11 @@
+{
+  "decade": "1980s",
+  "sitting_days": 1681,
+  "first": "debates1980-01-14a.xml",
+  "last": "debates1989-12-21a.xml",
+  "paragraphs": 702299,
+  "bytes": 650891675,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1980s.txt"
+}

@@ -1,0 +1,11 @@
+{
+  "decade": "1940s",
+  "sitting_days": 1331,
+  "first": "debates1940-01-16a.xml",
+  "last": "debates1949-12-16a.xml",
+  "paragraphs": 593031,
+  "bytes": 393562425,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1940s.txt"
+}

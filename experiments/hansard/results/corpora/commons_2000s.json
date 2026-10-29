@@ -1,0 +1,11 @@
+{
+  "decade": "2000s",
+  "sitting_days": 969,
+  "first": "debates2000-01-10a.xml",
+  "last": "debates2009-12-16b.xml",
+  "paragraphs": 767420,
+  "bytes": 360596357,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_2000s.txt"
+}

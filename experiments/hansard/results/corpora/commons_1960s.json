@@ -1,0 +1,11 @@
+{
+  "decade": "1960s",
+  "sitting_days": 1632,
+  "first": "debates1960-01-26a.xml",
+  "last": "debates1969-12-19a.xml",
+  "paragraphs": 746905,
+  "bytes": 603633852,
+  "parse_errors": {},
+  "source": "data/raw/hansard/debates",
+  "output": "data/derived/hansard/commons_1960s.txt"
+}
