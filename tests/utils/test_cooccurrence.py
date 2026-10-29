@@ -11,12 +11,12 @@ from hypothesis import assume
 from hypothesis import given
 from hypothesis import settings
 from hypothesis import strategies as st
-from nltk.util import skipgrams
 
 from chronowords import _core
 from chronowords.utils.cooccurrence import CooccurrenceCounts
 from chronowords.utils.cooccurrence import count_cooccurrences
 from chronowords.utils.cooccurrence import ppmi_matrix
+from tests.reference import skipgrams
 
 
 WORDS = ["cat", "dog", "fish", "bird", "cow", "élő", "ég"]
@@ -52,10 +52,10 @@ def as_tuple(c: CooccurrenceCounts):
 
 
 def reference_counts(lines, window, min_len, vocab):
-    """Pure-Python reference: str.split, len filter, nltk skipgrams."""
+    """Pure-Python reference: str.split, len filter, nltk-style skip-grams."""
     toks = [[w for w in line.split() if len(w) >= min_len] for line in lines]
     words = Counter(w for t in toks for w in t)
-    pairs = Counter(p for t in toks for p in skipgrams(t, 2, window))
+    pairs = Counter(p for t in toks for p in skipgrams(t, window))
     return words, pairs
 
 
@@ -397,7 +397,7 @@ def test_vocabularies_beyond_65536_words_use_wide_keys(tmp_path):
     lines = ["w0 w69999 w65536", "w65536 w1 w69999"]
     f = tmp_path / "wide.txt"
     f.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    expected = Counter(p for line in lines for p in skipgrams(line.split(), 2, 1))
+    expected = Counter(p for line in lines for p in skipgrams(line.split(), 1))
     for rows, cols, counts, _ in (
         _core.count_pairs(lines, vocab, 1, 0),
         _core.count_pairs_files([str(f)], vocab, 1, 0, chunk_bytes=5),

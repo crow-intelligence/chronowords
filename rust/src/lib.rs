@@ -4,26 +4,14 @@
 //! `chronowords.utils`; this module only takes and returns plain arrays.
 
 mod exact;
-mod murmur;
 mod pairs;
 mod parallel;
-mod sketch;
 mod source;
 mod tokenize;
 
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::{PyOverflowError, PyValueError};
 use pyo3::prelude::*;
-
-type Coo<'py> = (
-    Bound<'py, PyArray1<f64>>,
-    Bound<'py, PyArray1<i64>>,
-    Bound<'py, PyArray1<i64>>,
-);
-
-fn coo<'py>(py: Python<'py>, (d, r, c): (Vec<f64>, Vec<i64>, Vec<i64>)) -> Coo<'py> {
-    (d.into_pyarray(py), r.into_pyarray(py), c.into_pyarray(py))
-}
 
 fn require(cond: bool, msg: impl Into<String>) -> PyResult<()> {
     if cond {
@@ -31,61 +19,6 @@ fn require(cond: bool, msg: impl Into<String>) -> PyResult<()> {
     } else {
         Err(PyValueError::new_err(msg.into()))
     }
-}
-
-/// Signed MurmurHash3 x86 32-bit, identical to ``mmh3.hash(key, seed)``.
-#[pyfunction]
-fn murmur3_32(key: &[u8], seed: u32) -> i32 {
-    murmur::murmur3_32(key, seed) as i32
-}
-
-/// PPMI COO entries for focus words ``[start, end)`` from Count-Min Sketch tables.
-#[pyfunction]
-#[pyo3(signature = (skipgram_counts, word_counts, vocabulary, seeds, width,
-                    skip_total, word_total, shift, alpha, start, end, min_count=5))]
-#[allow(clippy::too_many_arguments)]
-fn sketch_ppmi<'py>(
-    py: Python<'py>,
-    skipgram_counts: PyReadonlyArray2<'py, i32>,
-    word_counts: PyReadonlyArray2<'py, i32>,
-    vocabulary: Vec<String>,
-    seeds: Vec<u32>,
-    width: usize,
-    skip_total: f64,
-    word_total: f64,
-    shift: f64,
-    alpha: f64,
-    start: usize,
-    end: usize,
-    min_count: i32,
-) -> PyResult<Coo<'py>> {
-    let (skip, word) = (skipgram_counts.as_array(), word_counts.as_array());
-    require(width > 0, "width must be positive")?;
-    require(!seeds.is_empty(), "seeds must not be empty")?;
-    for (name, t) in [("skipgram_counts", &skip), ("word_counts", &word)] {
-        require(
-            t.shape() == [seeds.len(), width],
-            format!(
-                "{name} has shape {:?}; expected (len(seeds), width) = ({}, {width})",
-                t.shape(),
-                seeds.len()
-            ),
-        )?;
-    }
-    let inp = sketch::SketchInputs {
-        skipgram_counts: skip,
-        word_counts: word,
-        vocabulary: &vocabulary,
-        seeds: &seeds,
-        width,
-        skip_total,
-        word_total,
-        shift,
-        alpha,
-        min_count,
-    };
-    let out = py.detach(|| sketch::ppmi_rows(&inp, start, end));
-    Ok(coo(py, out))
 }
 
 type PpmiCoo<'py> = (
@@ -162,8 +95,8 @@ fn with_pool<T: Send>(n_threads: usize, f: impl FnOnce() -> T + Send) -> PyResul
     Ok(pool.install(f))
 }
 
-/// Tokens of one line under the given tokenizer settings (used by the
-/// pure-Python sketch path so both counting modes see identical tokens).
+/// Tokens of one line under the given tokenizer settings, exactly as the
+/// counting functions see them.
 #[pyfunction]
 #[pyo3(name = "tokenize", signature = (line, min_word_length, tokenizer="whitespace", lowercase=false))]
 fn tokenize_line(
@@ -388,9 +321,7 @@ fn ppmi_from_counts<'py>(
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(murmur3_32, m)?)?;
     m.add_function(wrap_pyfunction!(tokenize_line, m)?)?;
-    m.add_function(wrap_pyfunction!(sketch_ppmi, m)?)?;
     m.add_function(wrap_pyfunction!(count_words, m)?)?;
     m.add_function(wrap_pyfunction!(count_words_files, m)?)?;
     m.add_function(wrap_pyfunction!(count_pairs, m)?)?;

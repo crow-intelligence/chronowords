@@ -75,15 +75,6 @@ because it kept fixed-size Count-Min Sketches and a vocabulary of just 1,084
 words, and its PPMI matrix was dominated by hash-collision artefacts (see
 ``experiments/sketch_accuracy``).
 
-``counting="sketch"`` uses two
-:class:`~chronowords.utils.probabilistic_counter.CountMinSketch` tables of
-``cms_width * cms_depth * 4`` bytes each, plus the set of distinct words. Sketch
-counts are never under-estimated, but at the default width they are inflated by
-roughly ``skip-grams / cms_width`` per pair. That is about 18 on a 23 MB corpus,
-enough to put collision artefacts above the PPMI count threshold (see
-``experiments/sketch_accuracy``). Use it only with a ``cms_width`` well above the
-number of skip-grams.
-
 Saving and loading
 ------------------
 

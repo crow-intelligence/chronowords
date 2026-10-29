@@ -15,7 +15,6 @@ Detect semantic shifts over time in word embeddings. Train small PPMI-based lang
 
 - Exact two-pass word and skip-gram counting in a compiled core, on all CPU cores: training on 1 GB of Wikipedia takes about half a minute end to end; 3 GB takes 1.5 minutes in 3.4 GB of RAM on a 4-core laptop (see `experiments/scaling`)
 - Whitespace tokenisation (exactly `str.split()`), Unicode word segmentation (UAX #29), optional lowercasing, or your own pre-tokenised input
-- Optional Count-Min Sketch mode for a fixed counting-memory footprint
 - Topic modeling with Non-negative Matrix Factorization
 - Temporal alignment of word embeddings using Procrustes analysis
 - Counting and PPMI kernels in Rust (`chronowords._core`, via PyO3/maturin)
@@ -78,9 +77,6 @@ The following are known limitations and improvements not yet addressed. They are
 documented in `PRE-MORTEM.md` (fragility analysis) and `CHANGES_SUMMARY.md`.
 
 - **Robustness / error reporting**
-  - `CountMinSketch.estimate_error` currently ignores its `confidence` argument
-    (the result depends only on `width` and `total`) — decide the intended bound
-    and honour the parameter.
   - Narrow the broad `except Exception` blocks in `SVDAlgebra.train` (the silent,
     noise-injecting dense-SVD fallback) and `TopicModel._compute_topic_similarity`
     (returns `0.0` on any failure) so real errors surface; log when a fallback fires.

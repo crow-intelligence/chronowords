@@ -3,16 +3,12 @@
 import json
 import logging
 import pickle
-from collections.abc import Iterable
-from collections.abc import Iterator
-from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 from typing import Literal
-from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -22,15 +18,10 @@ from scipy.sparse import save_npz
 from scipy.sparse.linalg import svds
 from scipy.spatial.distance import cosine
 
-from .. import _core
 from ..utils.cooccurrence import CooccurrenceCounts
 from ..utils.cooccurrence import Corpus
-from ..utils.cooccurrence import _describe
-from ..utils.cooccurrence import _paths
 from ..utils.cooccurrence import count_cooccurrences
 from ..utils.cooccurrence import ppmi_matrix
-from ..utils.count_skipgrams import PPMIComputer
-from ..utils.probabilistic_counter import CountMinSketch
 
 
 logger = logging.getLogger(__name__)
@@ -41,63 +32,6 @@ def _version() -> str | None:
         return version("chronowords")
     except PackageNotFoundError:
         return None
-
-
-def _token_lists(
-    corpus: Corpus,
-    min_word_length: int,
-    tokenizer: str = "whitespace",
-    lowercase: bool = False,
-) -> Iterator[list[str]]:
-    """Yield the kept tokens of each corpus line (sketch mode).
-
-    Mirrors the compiled core's reading rules: files are UTF-8 with universal
-    newlines; ``str`` lines are tokenised exactly as the exact path does
-    (``str.split()`` here, or ``_core.tokenize`` for other settings); token
-    sequences are taken verbatim, must not contain whitespace, and require
-    ``tokenizer="whitespace"``.
-    """
-    if isinstance(corpus, str | bytes):
-        raise TypeError(
-            "corpus is a single string; pass an iterable of lines, or a "
-            "pathlib.Path for a file"
-        )
-    plain = tokenizer == "whitespace" and not lowercase
-
-    def split(line: str) -> list[str]:
-        if plain:
-            return [w for w in line.split() if len(w) >= min_word_length]
-        return _core.tokenize(line, min_word_length, tokenizer, lowercase)
-
-    paths = _paths(corpus)
-    if paths is not None:
-        for p in paths:
-            with Path(p).open(encoding="utf-8") as fh:
-                for line in fh:
-                    yield split(line)
-        return
-    items = cast("Iterable[str] | Iterable[Sequence[str]]", corpus)
-    for item in items:
-        if isinstance(item, str):
-            yield split(item)
-            continue
-        if tokenizer != "whitespace":
-            raise ValueError(
-                'pre-tokenised input is used verbatim; it requires tokenizer="whitespace"'
-            )
-        tokens = list(item)
-        for t in tokens:
-            if not isinstance(t, str):
-                raise TypeError(f"token {t!r} is not a str")
-            if t.split() != [t]:
-                raise ValueError(
-                    f"pre-tokenised token {t!r} is empty or contains whitespace"
-                )
-        if lowercase:
-            # same Unicode lowercasing as the exact path
-            yield _core.tokenize(" ".join(tokens), min_word_length, "whitespace", True)
-        else:
-            yield [w for w in tokens if len(w) >= min_word_length]
 
 
 @dataclass
@@ -153,11 +87,9 @@ class AnalogyResult:
 class SVDAlgebra:
     """Implements word vector algebra using SVD-based embeddings.
 
-    Builds PPMI-weighted word embeddings from a corpus via truncated SVD. By
-    default every word and skip-gram is counted exactly, in two passes, by the
-    compiled core (:func:`~chronowords.utils.cooccurrence.count_cooccurrences`);
-    ``counting="sketch"`` instead uses Count-Min Sketches with a fixed memory
-    footprint and approximate (over-estimated) counts.
+    Builds PPMI-weighted word embeddings from a corpus via truncated SVD. Every
+    word and skip-gram is counted exactly, in two passes, by the compiled core
+    (:func:`~chronowords.utils.cooccurrence.count_cooccurrences`).
 
     The model has a two-phase lifecycle: it is unusable until :meth:`train`
     (or :meth:`load_model`) has populated ``vocabulary`` and ``embeddings``.
@@ -179,12 +111,9 @@ class SVDAlgebra:
         n_components: int = 300,
         window_size: int = 5,
         min_word_length: int = 3,
-        cms_width: int = 1_000_000,
-        cms_depth: int = 5,
         *,
         vocab_size: int | None = 50_000,
         min_count: int = 100,
-        counting: Literal["exact", "sketch"] = "exact",
         shift: float = 1.0,
         alpha: float = 0.75,
         ppmi_min_count: int = 5,
@@ -203,19 +132,10 @@ class SVDAlgebra:
                 ``window_size + 1`` tokens. Default 5.
             min_word_length: Tokens shorter than this many code points are
                 dropped before counting. Default 3.
-            cms_width: Count-Min Sketch width; ``counting="sketch"`` only.
-                Memory is ``cms_width * cms_depth * 4`` bytes per sketch.
-                Default 1,000,000.
-            cms_depth: Count-Min Sketch depth; ``counting="sketch"`` only.
-                Default 5.
             vocab_size: Keep at most this many words, most frequent first,
                 ties alphabetical; ``None`` for no cap. Default 50,000.
             min_count: Keep only words occurring at least this many times.
                 Default 100. Lower it for small corpora.
-            counting: ``"exact"`` (default) counts exactly in two passes;
-                ``"sketch"`` uses Count-Min Sketches. Sketch counts
-                over-estimate, by roughly ``skip-grams / cms_width`` per
-                pair, and the sketch PPMI kernel costs O(V^2) lookups.
             shift: PMI shift; ``log(shift)`` is subtracted from every PMI.
                 Default 1.0 (no shift).
             alpha: Context-distribution smoothing exponent, applied to the
@@ -230,8 +150,8 @@ class SVDAlgebra:
                 uses one per CPU core. Does not affect results.
 
         Raises:
-            ValueError: If a parameter is out of range, or ``counting`` or
-                ``tokenizer`` is not one of its documented values.
+            ValueError: If a parameter is out of range, or ``tokenizer`` is not
+                one of its documented values.
 
         Examples:
             >>> model = SVDAlgebra(n_components=100)
@@ -239,14 +159,12 @@ class SVDAlgebra:
             100
             >>> model.embeddings is None
             True
-            >>> SVDAlgebra(counting="approximate")
+            >>> SVDAlgebra(tokenizer="bpe")
             Traceback (most recent call last):
             ...
-            ValueError: counting must be 'exact' or 'sketch', got 'approximate'
+            ValueError: tokenizer must be 'whitespace' or 'unicode', got 'bpe'
 
         """
-        if counting not in ("exact", "sketch"):
-            raise ValueError(f"counting must be 'exact' or 'sketch', got {counting!r}")
         if tokenizer not in ("whitespace", "unicode"):
             raise ValueError(
                 f"tokenizer must be 'whitespace' or 'unicode', got {tokenizer!r}"
@@ -255,8 +173,6 @@ class SVDAlgebra:
             ("n_components", n_components, 1),
             ("window_size", window_size, 0),
             ("min_word_length", min_word_length, 0),
-            ("cms_width", cms_width, 1),
-            ("cms_depth", cms_depth, 1),
             ("min_count", min_count, 1),
             ("ppmi_min_count", ppmi_min_count, 0),
         ):
@@ -272,11 +188,8 @@ class SVDAlgebra:
         self.n_components = n_components
         self.window_size = window_size
         self.min_word_length = min_word_length
-        self.cms_width = cms_width
-        self.cms_depth = cms_depth
         self.vocab_size = vocab_size
         self.min_count = min_count
-        self.counting = counting
         self.shift = shift
         self.alpha = alpha
         self.ppmi_min_count = ppmi_min_count
@@ -307,9 +220,6 @@ class SVDAlgebra:
             "min_word_length": self.min_word_length,
             "vocab_size": self.vocab_size,
             "min_count": self.min_count,
-            "counting": self.counting,
-            "cms_width": self.cms_width,
-            "cms_depth": self.cms_depth,
             "shift": self.shift,
             "alpha": self.alpha,
             "ppmi_min_count": self.ppmi_min_count,
@@ -329,8 +239,8 @@ class SVDAlgebra:
         most frequent words with at least ``min_count`` occurrences, ties
         alphabetical), computes a sparse PPMI matrix and factorises it with
         truncated SVD. On success, populates ``vocabulary``, ``embeddings``,
-        ``ppmi`` and ``training_record``; with ``counting="exact"`` also
-        ``counts``, the exact counts behind the PPMI matrix. ``counts`` holds
+        ``ppmi``, ``training_record`` and ``counts``, the exact counts behind
+        the PPMI matrix. ``counts`` holds
         only pairs observed more than ``ppmi_min_count`` times, the only ones
         that can receive a PPMI entry; the totals include all pairs.
 
@@ -341,7 +251,7 @@ class SVDAlgebra:
                 whitespace exactly like ``str.split()``. See
                 :func:`~chronowords.utils.cooccurrence.count_cooccurrences`
                 for how each form is read; a single-use iterable is copied to
-                a temporary file in exact mode.
+                a temporary file.
 
         Raises:
             ValueError: If no word reaches ``min_count`` (an empty corpus, an
@@ -372,10 +282,7 @@ class SVDAlgebra:
             6
 
         """
-        if self.counting == "exact":
-            M, record = self._exact_ppmi(corpus)
-        else:
-            M, record = self._sketch_ppmi(corpus)
+        M, record = self._exact_ppmi(corpus)
         self._ppmi_sparse = M
         if M.nnz == 0:
             logger.warning(
@@ -448,62 +355,6 @@ class SVDAlgebra:
             "skip_total": counts.skip_total,
             "n_types": counts.n_types,
             "pairs_observed": len(counts.pair_counts),
-        }
-        return M, record
-
-    def _sketch_ppmi(self, corpus: Corpus) -> tuple[csr_matrix, dict[str, Any]]:
-        word_counter = CountMinSketch(self.cms_width, self.cms_depth)
-        skipgram_counter = CountMinSketch(
-            self.cms_width, self.cms_depth, track_keys=False
-        )
-        span = self.window_size + 2
-
-        logger.info("Counting words and skipgrams...")
-        for words in _token_lists(
-            corpus, self.min_word_length, self.tokenizer, self.lowercase
-        ):
-            for word in words:
-                word_counter.update(word)
-            n = len(words)
-            for i in range(n):
-                for j in range(i + 1, min(n, i + span)):
-                    skipgram_counter.update(f"{words[i]}#{words[j]}")
-
-        logger.info("Building vocabulary...")
-        estimates = sorted(
-            word_counter.get_heavy_hitters(0.0), key=lambda wc: (-wc[1], wc[0])
-        )
-        vocab = [w for w, c in estimates if c >= self.min_count]
-        if self.vocab_size is not None:
-            vocab = vocab[: self.vocab_size]
-        if not vocab:
-            raise ValueError(
-                f"Empty vocabulary: no word occurs at least min_count="
-                f"{self.min_count} times. Lower min_count for small corpora."
-            )
-        self.counts = None
-        self.vocabulary = vocab
-        self._build_vocab_index()
-
-        word_counts, word_seeds, width = word_counter.arrays
-        skipgram_counts, _, _ = skipgram_counter.arrays
-        M = PPMIComputer(
-            skipgram_counts=skipgram_counts,
-            word_counts=word_counts,
-            vocabulary=self.vocabulary,
-            seeds=word_seeds,
-            width=width,
-            skip_total=float(skipgram_counter.total),
-            word_total=float(word_counter.total),
-            shift=self.shift,
-            alpha=self.alpha,
-            min_count=self.ppmi_min_count,
-        ).compute_ppmi_matrix_with_sketch()
-        record = {
-            "corpus": _describe(corpus, _paths(corpus)),
-            "word_total": word_counter.total,
-            "skip_total": skipgram_counter.total,
-            "counts_are_estimates": True,
         }
         return M, record
 

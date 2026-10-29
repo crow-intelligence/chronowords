@@ -4,29 +4,12 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-_Coo = tuple[NDArray[np.float64], NDArray[np.int64], NDArray[np.int64]]
-
-def murmur3_32(key: bytes, seed: int) -> int: ...
 def tokenize(
     line: str,
     min_word_length: int,
     tokenizer: str = "whitespace",
     lowercase: bool = False,
 ) -> list[str]: ...
-def sketch_ppmi(
-    skipgram_counts: NDArray[np.int32],
-    word_counts: NDArray[np.int32],
-    vocabulary: list[str],
-    seeds: list[int],
-    width: int,
-    skip_total: float,
-    word_total: float,
-    shift: float,
-    alpha: float,
-    start: int,
-    end: int,
-    min_count: int = 5,
-) -> _Coo: ...
 
 _WordCounts = tuple[list[str], NDArray[np.int64], int]
 _PairCounts = tuple[NDArray[np.int32], NDArray[np.int32], NDArray[np.int64], int]

@@ -39,8 +39,6 @@ bench = [
 dev = [
     "pytest>=8.3.4",
     "hypothesis>=6.100",
-    "mmh3>=5.0.1,<6",
-    "nltk>=3.9.1,<4",
     "pre-commit>=4.1.0",
     "ruff>=0.9.4",
     "ty",

@@ -5,7 +5,7 @@
 //! still advancing the window over out-of-vocabulary tokens (positions are
 //! those of the length-filtered token stream, exactly as
 //! `nltk.util.skipgrams` sees it). The skip-gram total counts *all* pairs,
-//! in- or out-of-vocabulary, matching the sketch path's denominator.
+//! in- or out-of-vocabulary.
 
 use crate::pairs::{PairKey, PairTable, OOV};
 use crate::tokenize::{n_skipgrams, Tokenizer};
@@ -123,7 +123,7 @@ pub struct PpmiParams {
     pub min_count: i64,
 }
 
-/// PPMI over exact counts, in O(nnz). Same formula as the sketch kernel.
+/// PPMI over exact counts, in O(nnz).
 pub fn ppmi_from_counts(
     rows: &[i32],
     cols: &[i32],

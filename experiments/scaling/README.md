@@ -30,7 +30,7 @@ exactly the first 100 MB of the file that a 1000 MB run reads.
 
 ## What is measured
 
-`bench_train.py` runs one `SVDAlgebra.train` per process with the library
+`bench_train.py` measures the **0.3.x API** (Count-Min Sketch counting), so run it on a checkout of the fix branch (#10). It runs one `SVDAlgebra.train` per process with the library
 defaults, except `n_components=100`. The other defaults are `window_size=5`,
 `min_word_length=3`, `cms_width=1_000_000` and `cms_depth=5`. It records:
 

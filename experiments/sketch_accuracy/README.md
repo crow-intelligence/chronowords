@@ -30,6 +30,10 @@ the package targets are worse.
 
 ## Reproduce
 
+The sketch mode was removed from chronowords after this experiment, on the
+strength of these numbers. The comparison script is in git history: check out
+commit `289e902` (branch `phase4-summary`) and run
+
 ```bash
 uv run python experiments/sketch_accuracy/scripts/compare.py data/corpus/speeches_*_lemmatized.txt --label presidential
 ```

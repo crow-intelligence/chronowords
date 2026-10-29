@@ -1,52 +1,13 @@
 import tempfile
-from typing import Any
 
 import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import settings
 from hypothesis import strategies as st
-from scipy.sparse import csr_matrix
 
 from chronowords.algebra.svd import SVDAlgebra
-from chronowords.utils.count_skipgrams import PPMIComputer
 from tests.strategies import trainable_corpus
-
-
-def test_ppmi_computation():
-    """Test PPMI matrix computation with various parameters."""
-    vocab_size = 5
-    counts = np.zeros((3, 100), dtype=np.int32)
-    for i in range(vocab_size):
-        counts[0, i] = 10 * (i + 1)
-        counts[1, i] = 5 * (i + 1)
-
-    vocabulary = [f"word{i}" for i in range(vocab_size)]
-    seeds = [42, 43, 44]
-
-    params: list[dict[str, Any]] = [
-        {"shift": 1.0, "alpha": 0.75},
-        {"shift": 2.0, "alpha": 0.75},
-        {"shift": 1.0, "alpha": 1.0},
-    ]
-
-    for param in params:
-        computer = PPMIComputer(
-            skipgram_counts=counts,
-            word_counts=counts,
-            vocabulary=vocabulary,
-            seeds=seeds,
-            width=100,
-            skip_total=sum(counts[0]),
-            word_total=sum(counts[0]),
-            **param,
-        )
-        matrix = computer.compute_ppmi_matrix_with_sketch()
-
-        assert isinstance(matrix, csr_matrix)
-        assert matrix.shape == (vocab_size, vocab_size)
-        assert matrix.data.dtype == np.float64
-        assert np.all(matrix.data >= 0)
 
 
 def test_svd_algebra_full_pipeline(small_corpus):
@@ -108,28 +69,6 @@ def test_train_warns_on_empty_ppmi(caplog):
         model.train(line for line in corpus)
 
     assert "PPMI matrix is empty" in caplog.text
-
-
-@pytest.mark.parametrize("batch_size", [2, 5, 10])
-def test_ppmi_batch_processing(batch_size):
-    """Test PPMI computation with different batch sizes."""
-    vocab_size = 10
-    counts = np.zeros((3, 100), dtype=np.int32)
-    counts[0, :vocab_size] = 10
-    vocabulary = [f"word{i}" for i in range(vocab_size)]
-
-    computer = PPMIComputer(
-        skipgram_counts=counts,
-        word_counts=counts,
-        vocabulary=vocabulary,
-        seeds=[42, 43, 44],
-        width=100,
-        skip_total=float(vocab_size * 10),
-        word_total=float(vocab_size * 10),
-    )
-    matrix = computer.compute_ppmi_matrix_with_sketch(batch_size=batch_size)
-
-    assert matrix.shape == (vocab_size, vocab_size)
 
 
 def test_model_persistence(tmp_path, small_corpus):
@@ -349,7 +288,7 @@ def test_save_load_round_trip(corpus):
     assert reloaded.training_record == model.training_record
 
 
-# --- Phase 2: exact counting by default, sketch mode opt-in ----------------
+# --- exact counting, counts and training record ------------------------------
 
 SIGNAL_CORPUS = [
     "king queen crown palace royal throne",
@@ -378,7 +317,6 @@ def test_exact_mode_records_counts_and_parameters():
     assert model.counts.word_counts.min() >= 10
     rec = model.training_record
     assert rec is not None
-    assert rec["params"]["counting"] == "exact"
     assert rec["params"]["min_count"] == 10
     assert rec["word_total"] == sum(len(line.split()) for line in SIGNAL_CORPUS)
     assert rec["vocab_size"] == 5
@@ -457,7 +395,7 @@ def test_empty_vocabulary_explains_min_count():
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"counting": "approx"},
+        {"tokenizer": "bpe"},
         {"n_components": 0},
         {"min_count": 0},
         {"vocab_size": 0},
@@ -469,26 +407,6 @@ def test_constructor_validates(kwargs):
     """Out-of-range parameters fail at construction, not deep inside train."""
     with pytest.raises(ValueError):
         SVDAlgebra(**kwargs)
-
-
-def test_sketch_mode_matches_exact_mode_without_collisions():
-    """With a sketch wide enough to be collision-free, both modes agree."""
-    exact = SVDAlgebra(n_components=3, min_count=1)
-    sketch = SVDAlgebra(
-        n_components=3, min_count=1, counting="sketch", cms_width=200_000
-    )
-    exact.train(SIGNAL_CORPUS)
-    sketch.train(SIGNAL_CORPUS)
-
-    assert sketch.counts is None
-    assert sketch.training_record is not None
-    assert sketch.training_record["counts_are_estimates"] is True
-    assert sketch.vocabulary == exact.vocabulary
-    assert exact.ppmi is not None and sketch.ppmi is not None
-    assert exact.ppmi.nnz > 0
-    np.testing.assert_allclose(
-        sketch.ppmi.toarray(), exact.ppmi.toarray(), rtol=1e-12, atol=0
-    )
 
 
 def test_load_model_reads_legacy_dense_ppmi(tmp_path):
@@ -509,20 +427,9 @@ def test_load_model_reads_legacy_dense_ppmi(tmp_path):
     assert model.training_record is None
 
 
-def test_sketch_mode_tokenises_like_exact_mode():
-    """With the Unicode tokenizer and lowercasing, both modes see the same tokens."""
-    raw = [line.upper() + " !!" for line in SIGNAL_CORPUS]
-    kw: dict[str, Any] = {
-        "n_components": 3,
-        "min_count": 1,
-        "tokenizer": "unicode",
-        "lowercase": True,
-    }
-    exact = SVDAlgebra(**kw)
-    sketch = SVDAlgebra(counting="sketch", cms_width=200_000, **kw)
-    exact.train(raw)
-    sketch.train(raw)
-    assert exact.vocabulary == sketch.vocabulary
-    assert "king" in exact.vocabulary
-    assert exact.ppmi is not None and sketch.ppmi is not None
-    np.testing.assert_allclose(sketch.ppmi.toarray(), exact.ppmi.toarray(), rtol=1e-12)
+def test_sketch_parameters_are_gone():
+    """The Count-Min Sketch mode was removed in 0.4; its arguments now fail loudly."""
+    with pytest.raises(TypeError):
+        SVDAlgebra(counting="sketch")  # ty: ignore[unknown-argument]
+    with pytest.raises(TypeError):
+        SVDAlgebra(100, 5, 3, 1_000_000, 5)  # ty: ignore[too-many-positional-arguments]
