@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 pyo3 = { version = "0.30", features = ["abi3-py313"] }
 numpy = "0.30"
 rustc-hash = "2"
-unicode-segmentation = "1.13"
+icu_segmenter = "2.4"
 rayon = "1.12"
 
 [profile.release]

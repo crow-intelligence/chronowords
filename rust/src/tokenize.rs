@@ -1,6 +1,14 @@
-//! Tokenisation: whitespace (Python `str.split()`) or Unicode words (UAX #29).
+//! Tokenisation: whitespace (Python `str.split()`) or Unicode words (ICU4X).
 
-use unicode_segmentation::UnicodeSegmentation;
+use icu_segmenter::options::WordBreakInvariantOptions;
+use icu_segmenter::{WordSegmenter, WordSegmenterBorrowed};
+use std::sync::OnceLock;
+
+/// One process-wide word segmenter; its models are compiled into the binary.
+fn word_segmenter() -> WordSegmenterBorrowed<'static> {
+    static SEG: OnceLock<WordSegmenterBorrowed<'static>> = OnceLock::new();
+    *SEG.get_or_init(|| WordSegmenter::new_auto(WordBreakInvariantOptions::default()))
+}
 
 /// True where Python's `str.isspace()` is true.
 ///
@@ -16,9 +24,11 @@ pub fn is_python_space(c: char) -> bool {
 pub enum Kind {
     /// Exactly Python's `str.split()`.
     Whitespace,
-    /// Unicode word boundaries (UAX #29), keeping only segments that contain
-    /// a letter or digit: punctuation and whitespace are dropped, `can't`
-    /// and `3.14` stay whole.
+    /// Unicode word segmentation by ICU4X: UAX #29 word boundaries, plus
+    /// dictionary segmentation for Chinese and Japanese and models for Thai,
+    /// Lao, Khmer and Burmese, which are written without spaces. Only
+    /// word-like segments containing a letter or digit are kept: punctuation,
+    /// whitespace and runs of `_` are dropped; `can't` and `3.14` stay whole.
     Unicode,
 }
 
@@ -77,7 +87,18 @@ impl Tokenizer {
         };
         match self.kind {
             Kind::Whitespace => line.split(is_python_space).for_each(&mut emit),
-            Kind::Unicode => line.unicode_words().for_each(&mut emit),
+            Kind::Unicode => {
+                let mut it = word_segmenter().segment_str(line);
+                let mut prev = 0;
+                while let Some(b) = it.next() {
+                    let seg = &line[prev..b];
+                    // ICU counts "_" runs as word-like; require a letter or digit
+                    if it.is_word_like() && seg.chars().any(char::is_alphanumeric) {
+                        emit(seg);
+                    }
+                    prev = b;
+                }
+            }
         }
     }
 
@@ -129,6 +150,27 @@ mod tests {
             t.tokens("Hello, World! It's 3.14 — Élő\u{a0}ÁRVÍZTŰRŐ."),
             ["hello", "world", "it's", "3.14", "élő", "árvíztűrő"]
         );
+    }
+
+    #[test]
+    fn unicode_words_in_scripts_without_spaces() {
+        let t = Tokenizer {
+            kind: Kind::Unicode,
+            lowercase: false,
+            min_len: 0,
+        };
+        assert_eq!(
+            t.tokens("我们今天去北京大学学习。"),
+            ["我们", "今天", "去", "北京", "大学", "学习"]
+        );
+        assert_eq!(
+            t.tokens("snake_case ___ __init__"),
+            ["snake_case", "__init__"]
+        );
+        // Thai: "today the weather is good"; every syllable cluster stays whole
+        let thai = t.tokens("วันนี้อากาศดี");
+        assert_eq!(thai.concat(), "วันนี้อากาศดี");
+        assert!(thai.contains(&"อากาศ".to_string()));
     }
 
     #[test]

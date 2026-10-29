@@ -119,9 +119,11 @@ def count_cooccurrences(
     """Count words and skip-gram pairs exactly, in two passes.
 
     Tokenisation (``tokenizer``) is either whitespace splitting exactly as
-    Python's ``str.split()``, or Unicode word segmentation (UAX #29), which
-    drops punctuation and whitespace and keeps forms like ``can't`` and
-    ``3.14`` whole. Tokens are then optionally lowercased, and those shorter
+    Python's ``str.split()``, or Unicode word segmentation by ICU4X: UAX #29
+    word boundaries, plus dictionary segmentation for Chinese and Japanese
+    and models for Thai, Lao, Khmer and Burmese, which are written without
+    spaces. It drops punctuation and whitespace and keeps forms like
+    ``can't`` and ``3.14`` whole. Tokens are then optionally lowercased, and those shorter
     than ``min_word_length`` code points are dropped. Lines are context
     boundaries. Each kept token pairs with the next ``window_size + 1``
     kept tokens (the pairs ``nltk.util.skipgrams(tokens, 2, window_size)``
@@ -151,7 +153,7 @@ def count_cooccurrences(
         min_count: Keep only words occurring at least this many times.
             Default 100.
         tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or
-            ``"unicode"`` (UAX #29 word boundaries). Pre-tokenised input is
+            ``"unicode"`` (ICU4X word segmentation, for any script). Pre-tokenised input is
             always used verbatim and requires ``"whitespace"``.
         lowercase: Lowercase every token (Unicode-aware) before counting.
             Default ``False``.

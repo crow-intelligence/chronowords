@@ -14,7 +14,7 @@ Detect semantic shifts over time in word embeddings. Train small PPMI-based lang
 ## Features
 
 - Exact two-pass word and skip-gram counting in a compiled core, on all CPU cores: training on 1 GB of Wikipedia takes about half a minute end to end; 3 GB takes 1.5 minutes in 3.4 GB of RAM on a 4-core laptop (see `experiments/scaling`)
-- Whitespace tokenisation (exactly `str.split()`), Unicode word segmentation (UAX #29), optional lowercasing, or your own pre-tokenised input
+- Whitespace tokenisation (exactly `str.split()`), Unicode word segmentation for any script via ICU4X (including Chinese, Japanese and Thai), optional lowercasing, or your own pre-tokenised input
 - Topic modeling with Non-negative Matrix Factorization
 - Temporal alignment of word embeddings using Procrustes analysis
 - Counting and PPMI kernels in Rust (`chronowords._core`, via PyO3/maturin)

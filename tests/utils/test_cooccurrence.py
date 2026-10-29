@@ -291,6 +291,23 @@ def test_unicode_tokenizer_example():
     ]
 
 
+def test_unicode_tokenizer_segments_scripts_without_spaces():
+    """Chinese gets dictionary words, not single characters; Thai is segmented
+    without losing or duplicating any text.
+    """
+    assert _core.tokenize("我们今天去北京大学学习。", 0, "unicode") == [
+        "我们",
+        "今天",
+        "去",
+        "北京",
+        "大学",
+        "学习",
+    ]
+    thai = _core.tokenize("วันนี้อากาศดีมาก", 0, "unicode")
+    assert "".join(thai) == "วันนี้อากาศดีมาก"
+    assert "อากาศ" in thai and len(thai) > 2
+
+
 def test_tokenizer_options_agree_across_input_forms(tmp_path):
     """Files, lists and generators tokenise identically under every option."""
     f = tmp_path / "raw.txt"

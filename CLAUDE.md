@@ -8,7 +8,7 @@ Detect semantic shifts in word embeddings over time. PPMI-based small LMs, NMF t
 - `src/chronowords/utils/cooccurrence.py` — `count_cooccurrences` (exact two-pass counting; accepts `Path`/list of paths, lines, token lists, one-shot iterables via a temp spill file) and `ppmi_matrix` (O(nnz)).
 - `src/chronowords/alignment/procrustes.py` — Orthogonal Procrustes alignment between two embedding spaces.
 - `src/chronowords/topics/nmf.py` — `TopicModel` (NMF over PPMI).
-- `rust/src/` — the compiled core, exposed as `chronowords._core` (`exact.rs` sequential counting + O(nnz) PPMI, `pairs.rs` sharded pair table with compact u32 keys up to 65,536 words, `parallel.rs` rayon file chunking + parallel passes, `source.rs` file/iterable/spill reading, `tokenize.rs` `str.split()`-compatible or UAX #29 tokenisation). Type stub in `src/chronowords/_core.pyi`.
+- `rust/src/` — the compiled core, exposed as `chronowords._core` (`exact.rs` sequential counting + O(nnz) PPMI, `pairs.rs` sharded pair table with compact u32 keys up to 65,536 words, `parallel.rs` rayon file chunking + parallel passes, `source.rs` file/iterable/spill reading, `tokenize.rs` `str.split()`-compatible or ICU4X word segmentation). Type stub in `src/chronowords/_core.pyi`.
 - `tests/` — pytest suite mirroring the package layout, with shared fixtures in `tests/conftest.py`.
 - `examples/presidential_speeches.ipynb` — end-to-end usage demo.
 

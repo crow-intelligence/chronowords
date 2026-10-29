@@ -143,7 +143,8 @@ class SVDAlgebra:
             ppmi_min_count: A word and a pair both need a count strictly
                 greater than this to receive a PPMI entry. Default 5.
             tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or
-                ``"unicode"`` (UAX #29 words, punctuation dropped). See
+                ``"unicode"`` (ICU4X word segmentation for any script,
+                including Chinese, Japanese and Thai; punctuation dropped). See
                 :func:`~chronowords.utils.cooccurrence.count_cooccurrences`.
             lowercase: Lowercase tokens before counting. Default ``False``.
             n_threads: Threads for counting file input; ``None`` (default)

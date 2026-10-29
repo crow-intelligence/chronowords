@@ -78,11 +78,15 @@ Files are counted on all CPU cores (``n_threads=None``); pass ``n_threads=2``
 to leave cores free. The thread count never changes the counts.
 
 Raw text with punctuation? Instead of preprocessing it in Python, let the core
-segment it into Unicode words (UAX #29) and lowercase it::
+segment it into words and lowercase it::
 
    model = SVDAlgebra(tokenizer="unicode", lowercase=True)
 
-That drops punctuation and keeps ``can't`` and ``3.14`` whole. The default,
+The ``"unicode"`` tokenizer uses ICU4X, the Unicode Consortium's Rust library.
+It follows the Unicode word-boundary rules (UAX #29) and adds dictionary
+segmentation for Chinese and Japanese and models for Thai, Lao, Khmer and
+Burmese, which are written without spaces. It drops punctuation and keeps
+``can't`` and ``3.14`` whole. The default,
 ``tokenizer="whitespace"``, splits exactly like ``str.split()``, which is what
 lemmatised or otherwise pre-processed text needs. Both choices change the
 vocabulary, so they are recorded in ``training_record["params"]``.
