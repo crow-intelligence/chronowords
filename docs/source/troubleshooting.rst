@@ -16,8 +16,8 @@ Training
    - Pass a fresh iterable. A generator or file handle is **consumed once**; if
      you iterate it before calling ``train`` (or call ``train`` twice on the same
      generator), training sees nothing.
-   - The PPMI step also needs word and pair counts above ``ppmi_min_count``
-     (default 5). A corpus can therefore pass the vocabulary rule and still give
+   - The PPMI step also needs pair counts above ``ppmi_min_count``
+     (default 1). A corpus can therefore pass the vocabulary rule and still give
      an empty PPMI matrix, which logs a ``WARNING``.
 
 ``TypeError: corpus is a single string``
@@ -28,11 +28,26 @@ Training
    Files are read as strict UTF-8. Re-encode the file (``iconv -f latin1 -t utf-8``)
    or read it in Python with the right encoding and pass the lines.
 
-``most_similar`` returns ``[]`` / ``distance`` and ``get_vector`` return ``None``
+``most_similar`` returns ``[]`` / ``distance`` returns ``None``
    The model has not been trained, the word is not in the vocabulary, or the
-   word's vector has effectively zero norm. These cases are deliberately
-   non-raising and are indistinguishable from each other. Check
-   ``len(model.vocabulary)`` and ``word in model.vocabulary`` first.
+   word is in the vocabulary but **has no vector**. These cases are deliberately
+   non-raising. ``model.has_vector(word)`` tells the last case apart.
+
+Some vocabulary words have no vector
+   A word gets an all-zero vector when no pair it heads received a PPMI entry:
+   every pair it occurs in was seen ``ppmi_min_count`` times or fewer, or is not
+   positively associated. The model has no information about such a word, so
+   ``has_vector`` is ``False``, ``most_similar`` never returns it, ``distance``
+   and ``analogy`` return ``None``, and
+   :meth:`~chronowords.alignment.procrustes.ProcrustesAligner.get_word_similarity`
+   returns ``None``. ``training_record["zero_vectors"]`` counts them.
+
+   They are typically discourse words that combine with everything
+   (*moreover*, *presumably*) and, in small corpora, most of the vocabulary.
+   Lowering ``ppmi_min_count`` keeps rarer pairs and gives most of them a
+   vector. On English Wikipedia this also improves word-similarity scores
+   (``experiments/evaluation``), at the cost of more memory; see
+   ``max_memory``.
 
 Results change between identical runs
    Training is deterministic on the normal (sparse SVD) path. If sparse SVD fails

@@ -120,7 +120,7 @@ class SVDAlgebra:
         min_count: int = 100,
         shift: float = 1.0,
         alpha: float = 0.75,
-        ppmi_min_count: int = 5,
+        ppmi_min_count: int = 1,
         eig: float = 0.5,
         tokenizer: Literal["whitespace", "unicode"] = "whitespace",
         lowercase: bool = False,
@@ -149,7 +149,11 @@ class SVDAlgebra:
                 it. Default 0.75. See
                 :func:`~chronowords.utils.cooccurrence.ppmi_matrix`.
             ppmi_min_count: A pair needs a count strictly greater than this to
-                receive a PPMI entry. Default 5.
+                receive a PPMI entry. Default 1: on English Wikipedia,
+                dropping pairs seen up to 5 times cost 0.04-0.12 Spearman rho
+                on WordSim-353 and SimLex-999, and keeping every pair (0)
+                gained at most 0.02 at nearly twice the memory
+                (``experiments/evaluation``).
             eig: Eigenvalue weighting: embeddings are ``U * S**eig``. 0 uses
                 the singular vectors alone, 1 the full SVD scaling. Default 0.5.
             tokenizer: ``"whitespace"`` (default; Python ``str.split()``) or

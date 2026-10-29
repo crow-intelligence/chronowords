@@ -433,7 +433,7 @@ def ppmi_matrix(
     *,
     shift: float = 1.0,
     alpha: float = 0.75,
-    min_count: int = 5,
+    min_count: int = 1,
 ) -> csr_matrix:
     """Build the PPMI matrix from exact counts, in O(nnz).
 
@@ -460,7 +460,7 @@ def ppmi_matrix(
             no smoothing. Default 0.75.
         min_count: A pair needs a count strictly greater than this to receive
             an entry; rarer pairs are left out (their counts still enter the
-            row and column sums). Default 5.
+            row and column sums). Default 1, as for ``SVDAlgebra``.
 
     Returns:
         A ``(V, V)`` float64 :class:`scipy.sparse.csr_matrix` of strictly

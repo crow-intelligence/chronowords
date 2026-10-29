@@ -65,7 +65,7 @@ def ppmi_from_counts(
     col_sums: NDArray[np.int64],
     shift: float = 1.0,
     alpha: float = 0.75,
-    min_count: int = 5,
+    min_count: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.int32]]: ...
 def spill_corpus(
     corpus: Iterable[str] | Iterable[Sequence[str]],

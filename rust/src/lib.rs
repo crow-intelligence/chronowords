@@ -439,7 +439,7 @@ fn count_pairs_bounded<'py>(
 /// from pair counts and the unpruned row/column sums, in O(nnz).
 #[pyfunction]
 #[pyo3(signature = (rows, cols, pair_counts, row_sums, col_sums,
-                    shift=1.0, alpha=0.75, min_count=5))]
+                    shift=1.0, alpha=0.75, min_count=1))]
 #[allow(clippy::too_many_arguments)]
 fn ppmi_from_counts<'py>(
     py: Python<'py>,
